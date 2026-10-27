@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CYBER CORE // ORBITAL REACTOR PROTOCOL</title>
+<script src="lib/aframe.min.js"></script>
+<script>window.AFRAME || document.write('<script src="https://aframe.io/releases/1.7.0/aframe.min.js"><\/script>')</script>
+
+<style>
+  :root { --cy:#57dcff; --pu:#a65cff; --gn:#39ff98; --rd:#ff3b55; --tx:#e6efff; --mut:#8fa2c8; --bg:#07101fd9; --bd:#2b4175; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#02040b; color:var(--tx);
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace; user-select:none; -webkit-user-select:none; }
+  body.pointer .a-canvas { cursor:pointer !important; }
+  .panel { background:var(--bg); border:1px solid var(--bd); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); position:relative; }
+  .panel::before, .panel::after { content:""; position:absolute; width:9px; height:9px; border:1px solid var(--cy); pointer-events:none; }
+  .panel::before { top:-1px; left:-1px; border-right:0; border-bottom:0; }
+  .panel::after { bottom:-1px; right:-1px; border-left:0; border-top:0; }
+
+  #hud { position:fixed; z-index:20; top:16px; left:16px; width:300px; pointer-events:none; }
+  .brand { display:flex; gap:10px; align-items:center; margin-bottom:10px; text-shadow:0 0 14px #5279ff77; }
+  .dot { width:10px; height:10px; background:var(--cy); box-shadow:0 0 12px var(--cy); transform:rotate(45deg); animation:blink 2.2s infinite; }
+  #title { font-size:15px; font-weight:800; letter-spacing:5px; }
+  #subtitle { margin-top:3px; font-size:8px; letter-spacing:2px; color:var(--mut); }
+  #objective { padding:12px 14px; }
+  .lbl { font-size:8px; letter-spacing:2.5px; color:var(--cy); margin-bottom:5px; }
+  #mission { font-size:11px; font-weight:700; letter-spacing:1.2px; line-height:1.4; }
+  #segs { display:flex; gap:5px; margin:10px 0 12px; }
+  #segs i { flex:1; height:5px; background:#17254a; border:1px solid #2b4175; transition:.4s; }
+  #segs i.on { background:var(--gn); border-color:var(--gn); box-shadow:0 0 10px var(--gn); }
+  .meter { display:flex; justify-content:space-between; font-size:8px; letter-spacing:1.8px; color:var(--mut); margin-bottom:5px; }
+  .meter b { color:var(--tx); font-size:10px; }
+  .bar { height:6px; background:#0d1731; border:1px solid #2b4175; overflow:hidden; }
+  #stabBar { height:100%; width:12%; background:var(--rd); box-shadow:0 0 12px currentColor; }
+  #hint { margin-top:11px; font-size:9px; line-height:1.6; letter-spacing:.6px; color:#a8b6d6; }
+
+  #log { position:fixed; z-index:20; left:16px; bottom:16px; width:340px; max-width:calc(100vw - 32px); padding:10px 12px; pointer-events:none; }
+  #logLines { font-size:9px; line-height:1.7; letter-spacing:.5px; min-height:62px; }
+  #logLines div { color:#9fb2dc; animation:slide .35s ease; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #logLines div:first-child { color:var(--tx); }
+  #logLines div.ok { color:var(--gn); } #logLines div.warn { color:#ffb02e; } #logLines div.bad { color:var(--rd); }
+  #logLines div::before { content:"> "; opacity:.5; }
+
+  #nav { position:fixed; z-index:25; top:16px; right:16px; display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; max-width:62vw; }
+  .navbtn { border:1px solid var(--bd); background:var(--bg); color:#dce8ff; padding:10px 12px; font:700 9px/1 inherit; font-family:inherit; letter-spacing:1.2px; cursor:pointer; transition:.2s; backdrop-filter:blur(8px); }
+  .navbtn:hover:not(:disabled), .navbtn.active { border-color:var(--cy); background:#0f2a4a; color:#7beeff; box-shadow:0 0 18px #32cfff2a; }
+  .navbtn:disabled { opacity:.38; cursor:not-allowed; }
+  .navbtn kbd { color:var(--cy); margin-right:6px; }
+
+  #toast { position:fixed; z-index:30; bottom:26px; left:50%; transform:translate(-50%,10px); padding:11px 18px; max-width:88vw; text-align:center; background:#08142bee; border:1px solid var(--bd); color:var(--tx); font-size:10px; letter-spacing:1.2px; opacity:0; transition:.25s; pointer-events:none; }
+  #toast.show { opacity:1; transform:translate(-50%,0); }
+
+  #fade, #flash { position:fixed; inset:0; z-index:40; background:#02040b; opacity:0; pointer-events:none; transition:opacity .45s ease; }
+  #fade.on { opacity:1; pointer-events:all; }
+  #flash { background:#e8f6ff; z-index:45; transition:opacity .9s ease; }
+  #flash.on { opacity:1; transition:opacity .12s ease; }
+  #vignette { position:fixed; inset:0; z-index:10; pointer-events:none; background:radial-gradient(ellipse at center, transparent 55%, #02040bcc 100%); }
+
+  #boot, #end { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; background:radial-gradient(circle at 50% 40%, #0d1b3d 0%, #02040b 70%); transition:opacity .8s ease, visibility .8s; text-align:center; padding:20px; }
+  #end { z-index:55; background:radial-gradient(circle at 50% 50%, #0b2a24f2 0%, #02040bf4 75%); opacity:0; visibility:hidden; }
+  #end.show { opacity:1; visibility:visible; }
+  #boot.hide { opacity:0; visibility:hidden; }
+  .card { width:min(440px,92vw); }
+  .card h1 { margin:0; font-size:28px; letter-spacing:10px; text-indent:10px; text-shadow:0 0 28px #5279ffaa; }
+  .card h2 { margin:6px 0 26px; font-size:10px; font-weight:400; letter-spacing:4px; color:var(--mut); }
+  .loadbar { height:3px; background:#13203f; margin-bottom:22px; overflow:hidden; }
+  #loadfill { display:block; height:100%; width:8%; background:linear-gradient(90deg,var(--pu),var(--cy)); transition:width .5s ease; }
+  .btn { border:1px solid var(--cy); background:#0c2a4a; color:#8ff0ff; padding:14px 30px; font:700 11px inherit; font-family:inherit; letter-spacing:4px; cursor:pointer; transition:.2s; }
+  .btn:hover:not(:disabled) { background:#134672; box-shadow:0 0 28px #32cfff44; }
+  .btn:disabled { opacity:.5; cursor:wait; }
+  .btn.alt { border-color:var(--bd); background:transparent; color:var(--mut); margin-left:8px; }
+  .card small { display:block; margin-top:26px; font-size:9px; line-height:1.9; letter-spacing:1.4px; color:var(--mut); }
+  .stats { display:flex; justify-content:center; gap:30px; margin:26px 0 32px; }
+  .stats div { font-size:8px; letter-spacing:2px; color:var(--mut); }
+  .stats b { display:block; margin-top:6px; font-size:20px; color:var(--gn); letter-spacing:1px; }
+
+  @keyframes blink { 50% { opacity:.35; } }
+  @keyframes slide { from { opacity:0; transform:translateX(-8px); } }
+  @media (max-width:700px) {
+    #hud { width:230px; top:10px; left:10px; } #objective { padding:9px 10px; } #hint { display:none; }
+    #nav { top:auto; bottom:10px; right:10px; left:10px; max-width:none; justify-content:center; }
+    #log { display:none; } #title { font-size:12px; letter-spacing:3px; } .navbtn { padding:9px 8px; font-size:8px; }
+  }
+</style>
+
+<script>
+/* =====================================================================
+   CORE LIBRARY  — shared state, audio, helpers, custom components
+   ===================================================================== */
+const THREE = AFRAME.THREE;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const rand = (a, b) => a + Math.random() * (b - a);
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+const Game = {
+  scene: 'arrival', nodes: new Set(), bridge: false, pods: new Set(), busy: true, started: false, launching: false, done: false,
+  muted: false, t0: 0,
+  stability: 0.12, targetStability: 0.12, coreColor: new THREE.Color('#ff3b55')
+};
+const STABILITY_BY_NODES = [0.12, 0.41, 0.70, 1.0];
+const STOPS = [[0, '#ff3b55'], [0.41, '#ffab2e'], [0.7, '#38dfff'], [1, '#39ff98']].map(([s, c]) => [s, new THREE.Color(c)]);
+function stabilityColor(s, out) {
+  for (let i = 1; i < STOPS.length; i++) {
+    if (s <= STOPS[i][0]) {
+      const [a, ca] = STOPS[i - 1], [b, cb] = STOPS[i];
+      return out.copy(ca).lerp(cb, clamp((s - a) / (b - a), 0, 1));
+    }
+  }
+  return out.copy(STOPS[STOPS.length - 1][1]);
+}
+
+/* ---------- Procedural audio (no asset files) ---------- */
+const Sfx = {
+  ctx: null, out: null, humFilter: null,
+  init() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+    this.ctx = new C();
+    this.out = this.ctx.createGain(); this.out.gain.value = Game.muted ? 0 : 0.55; this.out.connect(this.ctx.destination);
+    const g = this.ctx.createGain(); g.gain.value = 0.05;
+    this.humFilter = this.ctx.createBiquadFilter(); this.humFilter.type = 'lowpass'; this.humFilter.frequency.value = 180;
+    [55, 55.45, 82.4, 110.2].forEach(f => { const o = this.ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(this.humFilter); o.start(); });
+    this.humFilter.connect(g); g.connect(this.out);
+  },
+  setMuted(m) { Game.muted = m; if (this.out) this.out.gain.setTargetAtTime(m ? 0 : 0.55, this.ctx.currentTime, 0.05); },
+  tension(s) { if (this.humFilter) this.humFilter.frequency.setTargetAtTime(160 + s * 520, this.ctx.currentTime, 0.4); },
+  tone(f, dur = .15, type = 'sine', vol = .2, slide = 0, delay = 0) {
+    if (!this.ctx) return; const t = this.ctx.currentTime + delay;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain(); o.type = type; o.frequency.setValueAtTime(f, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + .012); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g); g.connect(this.out); o.start(t); o.stop(t + dur + .05);
+  },
+  noise(dur, vol, f0, f1) {
+    if (!this.ctx) return; const t = this.ctx.currentTime, n = Math.floor(this.ctx.sampleRate * dur);
+    const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    const bp = this.ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(f0, t); bp.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const g = this.ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + dur * .3); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    src.connect(bp); bp.connect(g); g.connect(this.out); src.start(t);
+  },
+  hover() { this.tone(1100, .07, 'sine', .04); },
+  click() { this.tone(660, .09, 'square', .05); this.tone(990, .12, 'sine', .07, 0, .05); },
+  deny() { this.tone(180, .22, 'sawtooth', .08, -60); },
+  whoosh() { this.noise(1.1, .22, 300, 2600); },
+  activate(n) { [523.25, 659.25, 783.99, 1046.5].slice(0, n + 1).forEach((f, i) => this.tone(f, .5, 'triangle', .1, 0, i * .09)); this.tone(110 * n, .9, 'sine', .18, 40); },
+  stable() { [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => this.tone(f, 1.1, 'sine', .1, 0, i * .12)); this.noise(1.6, .15, 400, 3200); },
+  launch() { this.noise(3.4, .35, 120, 5200); this.tone(70, 3.4, 'sawtooth', .12, 600); }
+};
+
+/* ---------- Glow texture (shared) ---------- */
+let _glowTex;
+function glowTexture() {
+  if (_glowTex) return _glowTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.22, 'rgba(255,255,255,.6)');
+  gr.addColorStop(.55, 'rgba(255,255,255,.14)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  _glowTex = new THREE.CanvasTexture(c); _glowTex.colorSpace = THREE.SRGBColorSpace; return _glowTex;
+}
+
+function tintEntity(el, col) {
+  const o = el.getObject3D('mesh') || el.getObject3D('points') || el.getObject3D('glow');
+  if (o && o.material) { o.material.color.copy(col); if (o.material.emissive) o.material.emissive.copy(col); }
+  const l = el.components && el.components.light && el.components.light.light; if (l) l.color.copy(col);
+}
+
+/* ---------- Ship model loader (GLB with procedural fallback) ---------- */
+let _shipPromise;
+function loadShipModel() {
+  if (_shipPromise) return _shipPromise;
+  _shipPromise = new Promise(res => {
+    const L = THREE.GLTFLoader; if (!L) return res(null);
+    try { new L().load('models/spaceship.glb', g => res(g.scene), undefined, () => res(null)); } catch (e) { res(null); }
+  });
+  return _shipPromise;
+}
+function buildProceduralShip(size) {
+  const g = new THREE.Group(), u = size / 4;
+  const hull = new THREE.MeshStandardMaterial({ color: 0xb8c4e4, metalness: .85, roughness: .26 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1b2540, metalness: .8, roughness: .4 });
+  const glow = (c) => new THREE.MeshBasicMaterial({ color: c });
+  const body = new THREE.Mesh(new THREE.ConeGeometry(.42 * u, 2.6 * u, 10).rotateX(Math.PI / 2), hull); g.add(body);
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(.42 * u, .5 * u, 1.1 * u, 10).rotateX(Math.PI / 2), dark); tail.position.z = -1.5 * u; g.add(tail);
+  [-1, 1].forEach(s => {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(1.7 * u, .06 * u, 1.1 * u), hull); w.position.set(s * 1.0 * u, -.05 * u, -.7 * u); w.rotation.z = s * -.12; g.add(w);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(.06 * u, .05 * u, 1.0 * u), glow(0xa65cff)); tip.position.set(s * 1.82 * u, -.05 * u, -.7 * u); g.add(tip);
+    const eng = new THREE.Mesh(new THREE.CylinderGeometry(.16 * u, .2 * u, .9 * u, 10).rotateX(Math.PI / 2), dark); eng.position.set(s * .55 * u, -.1 * u, -1.8 * u); g.add(eng);
+    const fl = new THREE.Mesh(new THREE.CircleGeometry(.14 * u, 12).rotateY(Math.PI), glow(0x58e8ff)); fl.position.set(s * .55 * u, -.1 * u, -2.26 * u); g.add(fl);
+  });
+  const can = new THREE.Mesh(new THREE.SphereGeometry(.3 * u, 14, 10), new THREE.MeshStandardMaterial({ color: 0x38dfff, emissive: 0x38dfff, emissiveIntensity: .9, metalness: .3, roughness: .1 }));
+  can.scale.set(1, .7, 1.8); can.position.set(0, .28 * u, .3 * u); g.add(can);
+  return g;
+}
+AFRAME.registerComponent('ship-model', {
+  schema: { size: { default: 3.4 }, facing: { default: 180 } },
+  init() {
+    this.root = new THREE.Group(); this.el.setObject3D('mesh', this.root);
+    loadShipModel().then(src => {
+      if (!this.el.parentNode) return; let obj;
+      if (src) {
+        obj = src.clone(true); const box = new THREE.Box3().setFromObject(obj);
+        const sz = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+        obj.position.sub(c); const wrap = new THREE.Group(); wrap.add(obj);
+        wrap.scale.setScalar(this.data.size / Math.max(sz.x, sz.y, sz.z, 1e-3)); obj = wrap;
+      } else obj = buildProceduralShip(this.data.size);
+      const pivot = new THREE.Group(); pivot.rotation.y = THREE.MathUtils.degToRad(this.data.facing); pivot.add(obj); this.root.add(pivot);
+    });
+  },
+  remove() { this.el.removeObject3D('mesh'); }
+});
+
+/* ---------- Starfield (twinkling GPU points) ---------- */
+AFRAME.registerComponent('star-field', {
+  schema: { count: { default: 1500 }, radius: { default: 320 } },
+  init() {
+    const n = this.data.count, R = this.data.radius;
+    const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), size = new Float32Array(n), ph = new Float32Array(n);
+    const pal = ['#dce9ff', '#9bbaff', '#ffd9a8', '#c9a8ff'].map(c => new THREE.Color(c));
+    for (let i = 0; i < n; i++) {
+      const u = Math.random() * 2 - 1, a = Math.random() * 6.2832, s = Math.sqrt(1 - u * u), r = R * rand(.85, 1);
+      pos.set([r * s * Math.cos(a), r * u, r * s * Math.sin(a)], i * 3);
+      const c = pal[Math.floor(Math.random() * pal.length)]; col.set([c.r, c.g, c.b], i * 3);
+      size[i] = Math.pow(Math.random(), 3) * 3 + .9; ph[i] = Math.random();
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
+    g.setAttribute('aSize', new THREE.BufferAttribute(size, 1)); g.setAttribute('aPhase', new THREE.BufferAttribute(ph, 1));
+    this.mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uPx: { value: Math.min(window.devicePixelRatio || 1, 2) } },
+      vertexShader: `attribute float aSize; attribute float aPhase; attribute vec3 aColor; uniform float uTime; uniform float uPx;
+        varying vec3 vC; varying float vA;
+        void main(){ vC=aColor; vA=.55+.45*sin(uTime*1.4+aPhase*6.2831); gl_PointSize=aSize*uPx; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+      fragmentShader: `varying vec3 vC; varying float vA; void main(){ float d=length(gl_PointCoord-.5); gl_FragColor=vec4(vC, smoothstep(.5,0.,d)*vA); }`
+    });
+    const p = new THREE.Points(g, this.mat); p.frustumCulled = false; p.renderOrder = -5; this.el.setObject3D('mesh', p);
+  },
+  tick(t) { this.mat.uniforms.uTime.value = t / 1000; }
+});
+
+/* ---------- Procedural nebula sky ---------- */
+AFRAME.registerComponent('nebula', {
+  schema: { c1: { type: 'color', default: '#050b19' }, c2: { type: 'color', default: '#1b2a66' }, c3: { type: 'color', default: '#5a2d8a' } },
+  init() {
+    const d = this.data;
+    this.mat = new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false,
+      uniforms: { uTime: { value: 0 }, uC1: { value: new THREE.Color(d.c1) }, uC2: { value: new THREE.Color(d.c2) }, uC3: { value: new THREE.Color(d.c3) } },
+      vertexShader: `varying vec3 vDir; void main(){ vDir=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+      fragmentShader: `varying vec3 vDir; uniform vec3 uC1,uC2,uC3; uniform float uTime;
+        float hash(vec3 p){ p=fract(p*.3183099+.1); p*=17.; return fract(p.x*p.y*p.z*(p.x+p.y+p.z)); }
+        float noise(vec3 x){ vec3 i=floor(x), f=fract(x); f=f*f*(3.-2.*f);
+          return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
+                     mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z); }
+        float fbm(vec3 p){ float v=0., a=.5; for(int i=0;i<5;i++){ v+=a*noise(p); p=p*2.03+vec3(1.7,9.2,3.1); a*=.5; } return v; }
+        void main(){
+          vec3 d=normalize(vDir);
+          float n=fbm(d*2.2+vec3(0.,uTime*.01,0.)), n2=fbm(d*4.6-uTime*.015+5.);
+          float band=smoothstep(.34,.9,n)*smoothstep(-.2,.7,1.-abs(d.y*1.3+.1));
+          vec3 col=uC1*(1.-.35*d.y);
+          col=mix(col,uC2,band*.95);
+          col=mix(col,uC3,smoothstep(.52,.85,n2)*.55*band);
+          col+=uC2*pow(max(0.,1.-abs(d.y+.05)*3.),3.)*.3;
+          gl_FragColor=vec4(col,1.);
+        }`
+    });
+    const m = new THREE.Mesh(new THREE.SphereGeometry(400, 48, 32), this.mat); m.frustumCulled = false; m.renderOrder = -10; this.el.setObject3D('mesh', m);
+  },
+  tick(t) { this.mat.uniforms.uTime.value = t / 1000; }
+});
+
+/* ---------- Holographic grid floor ---------- */
+AFRAME.registerComponent('holo-floor', {
+  schema: { color: { type: 'color', default: '#3d6bff' }, cell: { default: 1 }, size: { default: 40 }, reactive: { default: false }, center: { type: 'vec3', default: { x: 0, y: 0, z: -10 } } },
+  init() {
+    const d = this.data; this.base = new THREE.Color(d.color);
+    this.mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      uniforms: { uTime: { value: 0 }, uCell: { value: d.cell }, uColor: { value: this.base.clone() }, uCenter: { value: new THREE.Vector3(d.center.x, d.center.y, d.center.z) } },
+      vertexShader: `varying vec3 vW; void main(){ vec4 w=modelMatrix*vec4(position,1.); vW=w.xyz; gl_Position=projectionMatrix*viewMatrix*w; }`,
+      fragmentShader: `varying vec3 vW; uniform float uTime,uCell; uniform vec3 uColor,uCenter;
+        void main(){
+          vec2 p=vW.xz; vec2 q=p/uCell; vec2 g=abs(fract(q-.5)-.5)/fwidth(q); float line=1.-min(min(g.x,g.y),1.);
+          vec2 q2=p/(uCell*5.); vec2 g2=abs(fract(q2-.5)-.5)/fwidth(q2); float major=1.-min(min(g2.x,g2.y),1.);
+          float dd=length(p-uCenter.xz);
+          float w=mod(dd-uTime*3.,14.); float ring=smoothstep(1.3,0.,w)*(1.-smoothstep(4.,20.,dd));
+          float fade=1.-smoothstep(6.,24.,dd);
+          float a=(line*.16+major*.38)*fade + ring*.55*(line+major*.7);
+          gl_FragColor=vec4(uColor*(1.+ring*1.4), a);
+        }`
+    });
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(d.size, d.size).rotateX(-Math.PI / 2), this.mat); m.renderOrder = 1; this.el.setObject3D('mesh', m);
+  },
+  tick(t) { this.mat.uniforms.uTime.value = t / 1000; this.mat.uniforms.uColor.value.copy(this.data.reactive ? Game.coreColor : this.base); }
+});
+
+/* ---------- Gate vortex shader ---------- */
+AFRAME.registerComponent('vortex', {
+  schema: { radius: { default: 1.3 }, boost: { default: 0 } },
+  init() {
+    this.mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uMix: { value: 0 }, uC1: { value: new THREE.Color('#a65cff') }, uC2: { value: new THREE.Color('#39e2ff') }, uC3: { value: new THREE.Color('#39ff98') } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+      fragmentShader: `varying vec2 vUv; uniform float uTime,uMix; uniform vec3 uC1,uC2,uC3;
+        void main(){
+          vec2 p=vUv-.5; float r=length(p)*2.; float a=atan(p.y,p.x);
+          float s=sin(a*3.+uTime*(1.6+uMix*5.)-r*9.)*.5+.5; float rings=sin(r*22.-uTime*(3.+uMix*8.))*.5+.5;
+          vec3 c=mix(uC1,uC2,s); c=mix(c,uC3,uMix);
+          float alpha=smoothstep(1.,.86,r)*(.28+.55*s*rings)+(1.-smoothstep(0.,.55,r))*(.35+uMix*.6);
+          gl_FragColor=vec4(c*(.6+rings*.9),alpha);
+        }`
+    });
+    this.el.setObject3D('mesh', new THREE.Mesh(new THREE.CircleGeometry(this.data.radius, 64), this.mat));
+  },
+  tick(t, dt) { this.mat.uniforms.uTime.value = t / 1000; const u = this.mat.uniforms.uMix; u.value += (this.data.boost - u.value) * Math.min(1, dt / 500); }
+});
+
+/* ---------- Additive glow sprite (cheap bloom) ---------- */
+AFRAME.registerComponent('glow', {
+  schema: { color: { type: 'color', default: '#5a7bff' }, size: { default: 2 }, opacity: { default: .8 } },
+  init() {
+    this.mat = new THREE.SpriteMaterial({ map: glowTexture(), color: this.data.color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+    this.sprite = new THREE.Sprite(this.mat); this.el.setObject3D('glow', this.sprite);
+  },
+  update() { const d = this.data; this.mat.color.set(d.color); this.mat.opacity = d.opacity; this.sprite.scale.set(d.size, d.size, 1); },
+  remove() { this.el.removeObject3D('glow'); }
+});
+
+/* ---------- Energy beam with animated flow ---------- */
+AFRAME.registerComponent('energy-beam', {
+  schema: { from: { type: 'vec3' }, to: { type: 'vec3' }, color: { type: 'color', default: '#39ff98' }, on: { default: false }, radius: { default: .03 } },
+  init() {
+    this.mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      uniforms: { uTime: { value: 0 }, uOn: { value: 0 }, uLen: { value: 1 }, uColor: { value: new THREE.Color() } },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+      fragmentShader: `varying vec2 vUv; uniform float uTime,uOn,uLen; uniform vec3 uColor;
+        void main(){ float f=sin(vUv.y*uLen*2.4-uTime*5.)*.5+.5; float pulse=pow(f,6.);
+          float a=mix(.12,.3+.7*pulse,uOn); vec3 c=mix(uColor*.35,uColor*(1.+pulse*1.2),uOn); gl_FragColor=vec4(c,a); }`
+    });
+    this.mesh = new THREE.Mesh(new THREE.CylinderGeometry(this.data.radius, this.data.radius, 1, 8, 1, true), this.mat);
+    this.mesh.frustumCulled = false; this.el.setObject3D('mesh', this.mesh);
+  },
+  update() {
+    const d = this.data, a = new THREE.Vector3(d.from.x, d.from.y, d.from.z), b = new THREE.Vector3(d.to.x, d.to.y, d.to.z), len = a.distanceTo(b);
+    this.mesh.position.copy(a).add(b).multiplyScalar(.5); this.mesh.scale.set(1, len, 1);
+    this.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+    this.mat.uniforms.uLen.value = len; this.mat.uniforms.uColor.value.set(d.color);
+  },
+  tick(t, dt) { const u = this.mat.uniforms; u.uTime.value = t / 1000; u.uOn.value += ((this.data.on ? 1 : 0) - u.uOn.value) * Math.min(1, dt / 350); }
+});
+
+/* ---------- Reactor core brain: stability -> colour, shake, HUD ---------- */
+AFRAME.registerComponent('reactor-core', {
+  init() { this.base = this.el.object3D.position.clone(); this.last = -1; this.tintEls = null; },
+  tick(t, dt) {
+    Game.stability += (Game.targetStability - Game.stability) * (1 - Math.exp(-dt / 450));
+    stabilityColor(Game.stability, Game.coreColor);
+    if (!this.tintEls) this.tintEls = [...document.querySelectorAll('.core-tint')];
+    this.tintEls.forEach(e => tintEntity(e, Game.coreColor));
+    const amp = Math.max(0, 1 - Game.stability * 1.05) * .04, p = this.el.object3D.position;
+    p.set(this.base.x + (Math.random() - .5) * amp, this.base.y + (Math.random() - .5) * amp, this.base.z + (Math.random() - .5) * amp);
+    const st = document.getElementById('core-status');
+    if (st && Game.stability < .99) st.object3D.visible = Math.floor(t / 420) % 2 === 0;
+    else if (st) st.object3D.visible = true;
+    const pct = Math.round(Game.stability * 100);
+    if (pct !== this.last) {
+      this.last = pct;
+      const bar = document.getElementById('stabBar'), val = document.getElementById('stabVal');
+      if (bar) { bar.style.width = pct + '%'; bar.style.background = '#' + Game.coreColor.getHexString(); bar.style.color = bar.style.background; }
+      if (val) val.textContent = pct + '%';
+    }
+  }
+});
+
+/* ---------- Orbiting energy particles ---------- */
+AFRAME.registerComponent('orbit-particles', {
+  schema: { count: { default: 260 }, rIn: { default: 1.5 }, rOut: { default: 2.8 }, height: { default: 3 }, size: { default: .08 }, color: { type: 'color', default: '#ffffff' } },
+  init() {
+    const d = this.data, n = d.count; this.a = new Float32Array(n); this.r = new Float32Array(n); this.y = new Float32Array(n); this.s = new Float32Array(n);
+    for (let i = 0; i < n; i++) { this.a[i] = rand(0, 6.283); this.r[i] = rand(d.rIn, d.rOut); this.y[i] = rand(-d.height / 2, d.height / 2); this.s[i] = rand(.35, 1.2) * (Math.random() < .35 ? -1 : 1); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    this.pts = new THREE.Points(g, new THREE.PointsMaterial({ color: d.color, size: d.size, map: glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.pts.frustumCulled = false; this.el.setObject3D('points', this.pts);
+  },
+  tick(t, dt) {
+    const d = this.data, n = d.count, arr = this.pts.geometry.attributes.position.array, spd = .35 + Game.stability * 1.7, unst = 1 - Game.stability;
+    for (let i = 0; i < n; i++) {
+      this.a[i] += this.s[i] * spd * dt / 1000;
+      this.y[i] += dt / 1000 * (.25 + Math.abs(this.s[i]) * .3); if (this.y[i] > d.height / 2) this.y[i] = -d.height / 2;
+      const rr = this.r[i] * (1 + unst * .3 * Math.sin(t / 260 + i));
+      arr[i * 3] = Math.cos(this.a[i]) * rr; arr[i * 3 + 1] = this.y[i]; arr[i * 3 + 2] = Math.sin(this.a[i]) * rr;
+    }
+    this.pts.geometry.attributes.position.needsUpdate = true;
+  }
+});
+
+/* ---------- Chasing guide lights (ring or runway) ---------- */
+AFRAME.registerComponent('chase-lights', {
+  schema: { mode: { default: 'ring' }, count: { default: 24 }, radius: { default: 3 }, length: { default: 8 }, color: { type: 'color', default: '#39e2ff' }, size: { default: .055 }, speed: { default: 1.2 } },
+  init() {
+    const d = this.data, geo = new THREE.SphereGeometry(d.size, 8, 8), g = new THREE.Group(); this.mats = [];
+    for (let i = 0; i < d.count; i++) {
+      const m = new THREE.MeshBasicMaterial({ color: d.color, transparent: true, opacity: .3, depthWrite: false }), s = new THREE.Mesh(geo, m);
+      if (d.mode === 'ring') { const a = i / d.count * 6.2832; s.position.set(Math.cos(a) * d.radius, 0, Math.sin(a) * d.radius); }
+      else s.position.set(0, 0, -i / (d.count - 1) * d.length);
+      g.add(s); this.mats.push(m);
+    }
+    this.el.setObject3D('mesh', g);
+  },
+  tick(t) { const n = this.mats.length; this.mats.forEach((m, i) => { const w = (((i / n - t / 1000 * this.data.speed) % 1) + 1) % 1; m.opacity = .15 + .85 * Math.pow(1 - w, 3); }); }
+});
+
+/* ---------- Small utilities ---------- */
+AFRAME.registerComponent('spin', {
+  schema: { axis: { type: 'vec3', default: { x: 0, y: 1, z: 0 } }, speed: { default: 20 }, reactive: { default: false } },
+  init() { const a = this.data.axis; this.ax = new THREE.Vector3(a.x, a.y, a.z); if (this.ax.lengthSq() === 0) this.ax.set(0, 1, 0); this.ax.normalize(); },
+  tick(t, dt) { const m = this.data.reactive ? .35 + Game.stability * 2.2 : 1; this.el.object3D.rotateOnAxis(this.ax, THREE.MathUtils.degToRad(this.data.speed * m * dt / 1000)); }
+});
+AFRAME.registerComponent('billboard', {
+  init() { this.v = new THREE.Vector3(); },
+  tick() { const cam = this.el.sceneEl.camera; if (!cam) return; cam.getWorldPosition(this.v); this.el.object3D.lookAt(this.v); }
+});
+AFRAME.registerComponent('bounds', {
+  schema: { minX: { default: -9 }, maxX: { default: 9 }, minZ: { default: -14 }, maxZ: { default: 6 } },
+  tick() { if (this.el.sceneEl.is('vr-mode')) return; const p = this.el.object3D.position, d = this.data; p.x = clamp(p.x, d.minX, d.maxX); p.z = clamp(p.z, d.minZ, d.maxZ); }
+});
+AFRAME.registerComponent('interactive', {
+  init() {
+    this.s = 1; this.t = 1;
+    this.el.addEventListener('mouseenter', () => { if (Game.busy) return; this.t = 1.1; document.body.classList.add('pointer'); Sfx.hover(); });
+    this.el.addEventListener('mouseleave', () => { this.t = 1; document.body.classList.remove('pointer'); });
+  },
+  tick(t, dt) { this.s += (this.t - this.s) * Math.min(1, dt / 90); this.el.object3D.scale.setScalar(this.s); },
+  reset() { this.t = 1; }
+});
+
+/* ---------- FX system: bursts, shockwaves, hyperspace ---------- */
+AFRAME.registerSystem('fx', {
+  init() { this.items = []; this.level = 0; this.target = 0; this.warp = null; },
+  burst(pos, hex, count = 110) {
+    const p = new Float32Array(count * 3), v = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      p[i * 3] = pos.x; p[i * 3 + 1] = pos.y; p[i * 3 + 2] = pos.z;
+      const th = Math.random() * 6.283, ph = Math.acos(2 * Math.random() - 1), sp = rand(1.2, 4.2);
+      v[i * 3] = Math.sin(ph) * Math.cos(th) * sp; v[i * 3 + 1] = Math.cos(ph) * sp * .9 + .8; v[i * 3 + 2] = Math.sin(ph) * Math.sin(th) * sp;
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+    const o = new THREE.Points(g, new THREE.PointsMaterial({ color: hex, size: .18, map: glowTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    o.frustumCulled = false; this.sceneEl.object3D.add(o); this.items.push({ type: 'burst', o, v, age: 0, life: 1.5 });
+  },
+  ring(pos, hex) {
+    const o = new THREE.Mesh(new THREE.RingGeometry(.3, .36, 64).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: hex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+    o.position.set(pos.x, .06, pos.z); this.sceneEl.object3D.add(o); this.items.push({ type: 'ring', o, age: 0, life: 1.3 });
+  },
+  setWarp(on) {
+    this.target = on ? 1 : 0;
+    if (on && !this.warp) {
+      const n = 460; this.wd = [];
+      for (let i = 0; i < n; i++) { const a = rand(0, 6.283), r = rand(1.6, 14); this.wd.push({ x: Math.cos(a) * r, y: Math.sin(a) * r, z: rand(-170, 0), s: rand(.7, 1.4) }); }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 6), 3));
+      this.warp = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+      this.warp.frustumCulled = false; document.getElementById('player-camera').object3D.add(this.warp);
+    }
+  },
+  tick(t, dt) {
+    const s = dt / 1000;
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const it = this.items[i]; it.age += s; const k = it.age / it.life;
+      if (it.type === 'burst') {
+        const a = it.o.geometry.attributes.position.array, drag = Math.max(0, 1 - s * 1.6);
+        for (let j = 0; j < a.length; j += 3) { a[j] += it.v[j] * s; a[j + 1] += it.v[j + 1] * s; a[j + 2] += it.v[j + 2] * s; it.v[j] *= drag; it.v[j + 1] *= drag; it.v[j + 2] *= drag; }
+        it.o.geometry.attributes.position.needsUpdate = true; it.o.material.opacity = Math.max(0, 1 - k);
+      } else { it.o.scale.setScalar(1 + k * 11); it.o.material.opacity = Math.max(0, (1 - k) * .9); }
+      if (k >= 1) { this.sceneEl.object3D.remove(it.o); it.o.geometry.dispose(); it.o.material.dispose(); this.items.splice(i, 1); }
+    }
+    if (this.warp) {
+      this.level += (this.target - this.level) * Math.min(1, s * 2.2);
+      const a = this.warp.geometry.attributes.position.array, sp = 40 + this.level * 260, len = .5 + this.level * 12;
+      this.wd.forEach((w, i) => { w.z += sp * w.s * s; if (w.z > 1) w.z = -170; a.set([w.x, w.y, w.z, w.x, w.y, w.z - len * w.s], i * 6); });
+      this.warp.geometry.attributes.position.needsUpdate = true; this.warp.material.opacity = this.level * .9;
+      if (this.target === 0 && this.level < .01) { this.warp.parent.remove(this.warp); this.warp.geometry.dispose(); this.warp = null; }
+    }
+  }
+});
+</script>
+</head>
+
+<body>
+<!-- ============================ UI ============================ -->
+<div id="vignette"></div>
+<div id="hud">
+  <div class="brand"><span class="dot"></span><div><div id="title">CYBER CORE</div><div id="subtitle">ORBITAL REACTOR PROTOCOL // SYSTEM 07</div></div></div>
+  <div class="panel" id="objective">
+    <div class="lbl">// OBJECTIVE</div>
+    <div id="mission">ARRIVE AT THE STATION</div>
+    <div id="segs"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="meter"><span>CORE STABILITY</span><b id="stabVal">12%</b></div>
+    <div class="bar"><div id="stabBar"></div></div>
+    <div id="hint"></div>
+  </div>
+</div>
+<div id="log" class="panel"><div class="lbl">// STATION LOG</div><div id="logLines"></div></div>
+<nav id="nav" aria-label="Zone selection">
+  <button class="navbtn active" data-scene="arrival"><kbd>1</kbd>ARRIVAL</button>
+  <button class="navbtn" data-scene="reactor"><kbd>2</kbd>CYBER CORE</button>
+  <button class="navbtn" data-scene="bridge" disabled><kbd>3</kbd>COMMAND BRIDGE 🔒</button>
+  <button class="navbtn" data-scene="biodome" disabled><kbd>4</kbd>BIO-DOME 🔒</button>
+  <button class="navbtn" data-scene="dock" disabled><kbd>5</kbd>ESCAPE DOCK 🔒</button>
+  <button class="navbtn" id="soundBtn" title="Toggle sound (M)">SOUND ON</button>
+</nav>
+<div id="toast" role="status"></div>
+<div id="fade"></div><div id="flash"></div>
+
+<div id="boot">
+  <div class="card">
+    <h1>CYBER CORE</h1><h2>ORBITAL REACTOR PROTOCOL</h2>
+    <div class="loadbar"><i id="loadfill"></i></div>
+    <button class="btn" id="startBtn" disabled>INITIALIZING…</button>
+    <small>WASD — move &nbsp;·&nbsp; DRAG — look around<br>CLICK — interact &nbsp;·&nbsp; 1–5 — zones &nbsp;·&nbsp; M — mute</small>
+  </div>
+</div>
+<div id="end">
+  <div class="card">
+    <h1 style="color:var(--gn)">MISSION COMPLETE</h1><h2>REACTOR RESTORED · ESCAPE SUCCESSFUL</h2>
+    <div class="stats"><div>TIME<b id="statTime">0:00</b></div><div>OBJECTIVES<b>6 / 6</b></div><div>RANK<b id="statRank">S</b></div></div>
+    <button class="btn" id="replayBtn">REPLAY</button><button class="btn alt" id="stayBtn">KEEP EXPLORING</button>
+  </div>
+</div>
+
+<!-- ============================ 3D WORLD ============================ -->
+<a-scene id="scene" background="color: #02040b" fog="type: exponential; color: #060d1c; density: 0.011"
+         renderer="antialias: true; highRefreshRate: true" vr-mode-ui="enabled: true" loading-screen="enabled: false"
+         device-orientation-permission-ui="enabled: false">
+
+  <!-- global lighting + starfield -->
+  <a-entity light="type: ambient; color: #8fa8e0; intensity: 1.5"></a-entity>
+  <a-entity light="type: directional; color: #a9c2ff; intensity: 2.2" position="-3 8 5"></a-entity>
+  <a-entity star-field="count: 1600"></a-entity>
+
+  <!-- ==================== SCENE 1 : ORBITAL ARRIVAL ==================== -->
+  <a-entity id="scene-arrival" data-scene-root="arrival">
+    <a-entity nebula="c1: #040915; c2: #1a2c78; c3: #5a2d8a"></a-entity>
+
+    <!-- planet + atmosphere + ring -->
+    <a-entity position="-26 12 -90">
+      <a-sphere radius="13" color="#24356a" material="roughness: 1; metalness: .05; emissive: #0f1d48; emissiveIntensity: .45"></a-sphere>
+      <a-entity glow="color: #4d7bff; size: 40; opacity: .55"></a-entity>
+      <a-entity rotation="72 0 12"><a-torus radius="18" radius-tubular=".12" color="#6b86e6" material="emissive: #6b86e6; emissiveIntensity: .5; opacity: .75; transparent: true"></a-torus></a-entity>
+    </a-entity>
+    <a-entity id="debris-arrival"></a-entity>
+
+    <!-- distant station towers -->
+    <a-entity id="towers-arrival"></a-entity>
+
+    <!-- floor -->
+    <a-plane rotation="-90 0 0" position="0 -.02 -9" width="30" height="32" color="#080f20" material="roughness: .55; metalness: .6"></a-plane>
+    <a-entity holo-floor="color: #3d6bff; cell: 1; center: 0 0 -12" position="0 .01 0"></a-entity>
+    <a-box position="0 .03 -5.5" width=".05" height=".03" depth="9" color="#2452a8" material="emissive: #2452a8; emissiveIntensity: 1.2"></a-box>
+
+    <!-- central hex platform -->
+    <a-entity position="0 0 -12">
+      <a-cylinder segments-radial="6" radius="6.3" height=".3" position="0 -.1 0" color="#10192f" material="metalness: .85; roughness: .35"></a-cylinder>
+      <a-cylinder segments-radial="6" radius="5.4" height=".16" position="0 .06 0" color="#16213f" material="metalness: .85; roughness: .3"></a-cylinder>
+      <a-torus position="0 .17 0" rotation="90 0 0" radius="5.0" radius-tubular=".05" color="#3d64d9" material="emissive: #3d64d9; emissiveIntensity: 1"></a-torus>
+      <a-torus position="0 .18 0" rotation="90 0 0" radius="4.1" radius-tubular=".025" color="#32cfff" material="emissive: #32cfff; emissiveIntensity: .9"></a-torus>
+      <a-entity position="0 .2 0" chase-lights="mode: ring; count: 40; radius: 4.55; color: #57dcff; speed: .5"></a-entity>
+      <a-cylinder position="0 .45 0" radius="1.2" height=".7" color="#1a2748" material="metalness: .85; roughness: .3"></a-cylinder>
+      <a-cylinder position="0 3 0" radius=".05" height="5" color="#6a8cff" material="emissive: #6a8cff; emissiveIntensity: 1.5; transparent: true; opacity: .35"></a-cylinder>
+      <a-sphere position="0 1.7" radius=".62" color="#657cff" material="emissive: #657cff; emissiveIntensity: 1.5" animation="property: scale; from: .9 .9 .9; to: 1.08 1.08 1.08; dur: 1800; dir: alternate; loop: true; easing: easeInOutSine"></a-sphere>
+      <a-entity position="0 1.7 0" glow="color: #5f86ff; size: 5; opacity: .75"></a-entity>
+      <a-entity position="0 1.7 0" spin="axis: 0 1 0; speed: 40"><a-torus rotation="70 0 0" radius="1.05" radius-tubular=".035" color="#45dfff" material="emissive: #45dfff; emissiveIntensity: 1.2"></a-torus></a-entity>
+      <a-entity position="0 1.7 0" spin="axis: 0 1 0; speed: -28"><a-torus rotation="-55 0 20" radius="1.4" radius-tubular=".025" color="#a65cff" material="emissive: #a65cff; emissiveIntensity: 1.1"></a-torus></a-entity>
+      <a-text value="ORBITAL STATION // SYSTEM 07" position="0 4.6 0" align="center" width="8" color="#9bbaff" billboard></a-text>
+    </a-entity>
+
+    <!-- docked ship -->
+    <a-entity position="4.8 0 -9">
+      <a-cylinder position="0 .1 0" radius="2.1" height=".22" color="#18223d" material="metalness: .85; roughness: .3"></a-cylinder>
+      <a-torus position="0 .24 0" rotation="90 0 0" radius="1.75" radius-tubular=".045" color="#a65cff" material="emissive: #a65cff; emissiveIntensity: 1.2"></a-torus>
+      <a-entity position="0 .3 0" chase-lights="mode: ring; count: 22; radius: 1.95; color: #c08bff; speed: -.7"></a-entity>
+      <a-entity position="0 1.5 0" ship-model="size: 3.1" animation__bob="property: position; from: 0 1.4 0; to: 0 1.6 0; dur: 2600; dir: alternate; loop: true; easing: easeInOutSine">
+        <a-entity position="0 -.8 0" glow="color: #5b9bff; size: 4; opacity: .35"></a-entity>
+      </a-entity>
+    </a-entity>
+
+    <!-- nav console -->
+    <a-entity id="arrival-console" interactive position="-3 1.45 -5.5" rotation="0 24 0">
+      <a-box width="1.9" height="1.4" depth=".22" color="#12203d" material="metalness: .85; roughness: .3"></a-box>
+      <a-box position="0 -1 0" width=".25" height=".7" depth=".2" color="#0e182f" material="metalness: .8"></a-box>
+      <a-plane position="0 0 .12" width="1.62" height="1.06" color="#0b2843" material="emissive: #0c567e; emissiveIntensity: .55"></a-plane>
+      <a-text value="NAV CONSOLE" position="0 .38 .14" align="center" width="2.6" color="#e9f8ff"></a-text>
+      <a-plane position="0 -.04 .15" width="1.3" height=".34" color="#1676a1" material="emissive: #1685b5; emissiveIntensity: .7"></a-plane>
+      <a-text value="ENTER REACTOR  >" position="0 -.04 .17" align="center" width="2.1" color="#ffffff"></a-text>
+      <a-text value="CLICK TO SELECT" position="0 -.4 .14" align="center" width="1.8" color="#8eeaff"></a-text>
+      <a-entity position="0 0 .3" glow="color: #35c8ff; size: 3; opacity: .4"></a-entity>
+      <a-plane class="hit" position="0 0 .2" width="1.8" height="1.3" material="opacity: 0; transparent: true; depthWrite: false"></a-plane>
+    </a-entity>
+    <a-text value="ARRIVAL PLATFORM" position="-2 .06 -4.2" rotation="-90 0 0" align="center" width="4" color="#6f8fd8"></a-text>
+
+    <a-entity light="type: point; color: #4d75ff; intensity: 80; decay: 2" position="0 5 -10"></a-entity>
+    <a-entity light="type: point; color: #a65cff; intensity: 40; decay: 2" position="5 3 -8"></a-entity>
+  </a-entity>
+
+  <!-- ==================== SCENE 2 : CYBER CORE ==================== -->
+  <a-entity id="scene-reactor" data-scene-root="reactor">
+    <a-entity nebula="c1: #060a18; c2: #2a1a52; c3: #12407a"></a-entity>
+    <a-plane position="0 0 -10" rotation="-90 0 0" width="26" height="28" color="#0b1428" material="roughness: .55; metalness: .6"></a-plane>
+    <a-entity holo-floor="color: #ff3b55; reactive: true; cell: 1; center: 0 0 -10" position="0 .015 0"></a-entity>
+
+    <!-- floor conduits -->
+    <a-box position="-6 .035 -10" width=".05" height=".04" depth="20" color="#3555b7" material="emissive: #3555b7; emissiveIntensity: .9"></a-box>
+    <a-box position="6 .035 -10" width=".05" height=".04" depth="20" color="#3555b7" material="emissive: #3555b7; emissiveIntensity: .9"></a-box>
+    <a-box position="0 .035 -3" width="12" height=".04" depth=".05" color="#3555b7" material="emissive: #3555b7; emissiveIntensity: .9"></a-box>
+    <a-box position="0 .035 -17" width="12" height=".04" depth=".05" color="#3555b7" material="emissive: #3555b7; emissiveIntensity: .9"></a-box>
+    <a-entity id="columns"></a-entity>
+    <a-entity id="pylons"></a-entity>
+
+    <!-- dais -->
+    <a-entity position="0 0 -10">
+      <a-cylinder segments-radial="8" radius="3.7" height=".28" position="0 .1 0" color="#101a33" material="metalness: .9; roughness: .3"></a-cylinder>
+      <a-cylinder segments-radial="8" radius="2.7" height=".16" position="0 .26 0" color="#16223f" material="metalness: .9; roughness: .25"></a-cylinder>
+      <a-torus rotation="90 0 0" position="0 .36 0" radius="3.2" radius-tubular=".045" class="core-tint" color="#ff3b55" material="emissive: #ff3b55; emissiveIntensity: 1.2"></a-torus>
+      <a-entity position="0 .38 0" chase-lights="mode: ring; count: 36; radius: 2.5; color: #ffffff; speed: .6; size: .045"></a-entity>
+    </a-entity>
+
+    <!-- main reactor core -->
+    <a-entity id="core" reactor-core position="0 2.7 -10">
+      <a-cylinder radius="1.95" height="5.2" open-ended="true" material="color: #6ea0ff; transparent: true; opacity: .06; side: double; metalness: .3; roughness: .1"></a-cylinder>
+      <a-cylinder radius=".07" height="5.2" class="core-tint" color="#ff3b55" material="emissive: #ff3b55; emissiveIntensity: 1.4; transparent: true; opacity: .4"></a-cylinder>
+      <a-cone position="0 3 0" radius-bottom="1.1" radius-top=".25" height=".8" color="#1b2845" material="metalness: .9; roughness: .3"></a-cone>
+      <a-cone position="0 -3 0" rotation="180 0 0" radius-bottom="1.1" radius-top=".25" height=".8" color="#1b2845" material="metalness: .9; roughness: .3"></a-cone>
+      <a-entity spin="axis: 0 1 0; speed: 28; reactive: true"><a-torus class="core-tint" rotation="72 0 0" radius="1.6" radius-tubular=".045" color="#ff3b55" material="emissive: #ff3b55; emissiveIntensity: 1.3"></a-torus></a-entity>
+      <a-entity spin="axis: 0 1 0; speed: -40; reactive: true"><a-torus class="core-tint" rotation="-58 0 24" radius="1.2" radius-tubular=".03" color="#ff3b55" material="emissive: #ff3b55; emissiveIntensity: 1.3"></a-torus></a-entity>
+      <a-entity spin="axis: 1 0 0; speed: 55; reactive: true"><a-torus class="core-tint" rotation="0 90 0" radius=".85" radius-tubular=".022" color="#ff3b55" material="emissive: #ff3b55; emissiveIntensity: 1.3"></a-torus></a-entity>
+      <a-sphere class="core-tint" radius=".92" material="color: #ff3b55; emissive: #ff3b55; emissiveIntensity: 1; transparent: true; opacity: .18"></a-sphere>
+      <a-sphere class="core-tint" radius=".52" color="#ff3b55" material="emissive: #ff3b55; emissiveIntensity: 1.8; metalness: .3; roughness: .2" animation="property: scale; from: .88 .88 .88; to: 1.1 1.1 1.1; dur: 1500; dir: alternate; loop: true; easing: easeInOutSine"></a-sphere>
+      <a-entity class="core-tint" glow="color: #ff3b55; size: 7.5; opacity: .85"></a-entity>
+      <a-entity class="core-tint" orbit-particles="count: 280; rIn: 1.3; rOut: 2.8; height: 4.6"></a-entity>
+    </a-entity>
+    <a-text id="core-status" value="!! CORE UNSTABLE !!" position="0 6 -10" align="center" width="6" color="#ff6b80" billboard></a-text>
+    <a-text value="RESTORE ALL THREE POWER NODES" position="0 5.5 -10" align="center" width="4.6" color="#9ddfff" billboard></a-text>
+
+    <!-- conduits node -> core -->
+    <a-entity id="beam1" energy-beam="from: -4.2 1.7 -7.2; to: 0 2.7 -10"></a-entity>
+    <a-entity id="beam2" energy-beam="from: 4.2 1.8 -9.3; to: 0 2.7 -10"></a-entity>
+    <a-entity id="beam3" energy-beam="from: -3.9 1.8 -13.2; to: 0 2.7 -10"></a-entity>
+    <a-entity id="nodes"></a-entity>
+
+    <a-entity class="core-tint" light="type: point; color: #ff3b55; intensity: 90; decay: 2" position="0 4.2 -9"></a-entity>
+    <a-entity class="core-tint" light="type: point; color: #ff3b55; intensity: 50; decay: 2" position="0 1 -10"></a-entity>
+    <a-entity light="type: point; color: #35dfff; intensity: 30; decay: 2" position="-4 3 -6"></a-entity>
+    <a-entity light="type: point; color: #a65cff; intensity: 30; decay: 2" position="4 3 -14"></a-entity>
+  </a-entity>
+
+  <!-- ==================== SCENE 3 : COMMAND BRIDGE ==================== -->
+  <a-entity id="scene-bridge" data-scene-root="bridge">
+    <a-entity nebula="c1: #050816; c2: #0f3a5a; c3: #2a1a62"></a-entity>
+
+    <!-- view outside the windows: gas giant, moon, passing traffic -->
+    <a-entity position="-34 10 -85">
+      <a-sphere radius="20" color="#1d4a66" material="roughness: 1; emissive: #0c2c44; emissiveIntensity: .5"></a-sphere>
+      <a-entity glow="color: #3fb8ff; size: 62; opacity: .5"></a-entity>
+      <a-entity rotation="76 0 -8"><a-torus radius="29" radius-tubular=".16" color="#7ac8ff" material="emissive: #7ac8ff; emissiveIntensity: .5; opacity: .6; transparent: true"></a-torus></a-entity>
+    </a-entity>
+    <a-entity position="32 15 -62">
+      <a-sphere radius="4" color="#6a5a8a" material="roughness: 1; emissive: #2a1f4a; emissiveIntensity: .4"></a-sphere>
+      <a-entity glow="color: #b08cff; size: 14; opacity: .45"></a-entity>
+    </a-entity>
+    <a-entity ship-model="size: 2.4" rotation="0 -90 0" position="-45 7 -32" animation="property: position; from: -45 7 -32; to: 45 8 -32; dur: 17000; loop: true; easing: linear">
+      <a-entity position="0 0 1.4" glow="color: #58e8ff; size: 1.8; opacity: .8"></a-entity>
+    </a-entity>
+    <a-entity ship-model="size: 1.7" rotation="0 90 0" position="42 12 -48" animation="property: position; from: 42 12 -48; to: -42 10 -48; dur: 24000; loop: true; easing: linear">
+      <a-entity position="0 0 1" glow="color: #c08bff; size: 1.4; opacity: .8"></a-entity>
+    </a-entity>
+    <a-entity ship-model="size: 3.4" rotation="0 -90 0" position="-60 16 -70" animation="property: position; from: -60 16 -70; to: 60 14 -70; dur: 34000; loop: true; easing: linear">
+      <a-entity position="0 0 2" glow="color: #58e8ff; size: 2.4; opacity: .7"></a-entity>
+    </a-entity>
+
+    <!-- deck -->
+    <a-plane position="0 0 -10" rotation="-90 0 0" width="30" height="30" color="#080e1e" material="roughness: .4; metalness: .7"></a-plane>
+    <a-entity holo-floor="color: #35c8ff; cell: 1; center: 0 0 -10" position="0 .015 0"></a-entity>
+
+    <!-- panoramic window frame -->
+    <a-entity id="bridge-ribs"></a-entity>
+    <a-cylinder position="0 3.65 -8" radius="13" height="7.3" open-ended="true" theta-start="105" theta-length="150" material="color: #9fd8ff; transparent: true; opacity: .05; side: double; depthWrite: false"></a-cylinder>
+    <a-torus position="0 7.3 -8" rotation="90 0 0" radius="13" radius-tubular=".24" color="#16264a" material="metalness: .9; roughness: .3"></a-torus>
+    <a-torus position="0 7.15 -8" rotation="90 0 0" radius="12.7" radius-tubular=".05" color="#35c8ff" material="emissive: #35c8ff; emissiveIntensity: 1.3"></a-torus>
+    <a-torus position="0 .09 -8" rotation="90 0 0" radius="13" radius-tubular=".18" color="#16264a" material="metalness: .9; roughness: .3"></a-torus>
+    <a-torus position="0 .12 -8" rotation="90 0 0" radius="12.6" radius-tubular=".04" color="#35c8ff" material="emissive: #35c8ff; emissiveIntensity: 1.2"></a-torus>
+    <a-entity position="0 .16 -8" chase-lights="mode: ring; count: 56; radius: 12.4; color: #57dcff; speed: .35"></a-entity>
+    <a-entity id="bridge-consoles"></a-entity>
+
+    <!-- holographic star-map table -->
+    <a-entity position="0 0 -10">
+      <a-cylinder radius="2.5" height=".22" position="0 .11 0" color="#0c1428" material="metalness: .9; roughness: .3"></a-cylinder>
+      <a-cylinder radius="1.7" height=".9" position="0 .6 0" color="#101b36" material="metalness: .9; roughness: .3"></a-cylinder>
+      <a-cylinder radius="2.1" height=".14" position="0 1.12 0" color="#16264a" material="metalness: .9; roughness: .25"></a-cylinder>
+      <a-torus class="bridge-tint" data-orig="#35c8ff" rotation="90 0 0" position="0 1.2 0" radius="2" radius-tubular=".04" color="#35c8ff" material="emissive: #35c8ff; emissiveIntensity: 1.3"></a-torus>
+      <a-entity position="0 1.22 0" chase-lights="mode: ring; count: 32; radius: 1.65; color: #ffffff; speed: .7; size: .04"></a-entity>
+      <a-cone position="0 2 0" radius-bottom="1.55" radius-top=".5" height="1.6" open-ended="true" material="color: #57dcff; transparent: true; opacity: .07; side: double; depthWrite: false"></a-cone>
+      <a-entity position="0 3 0">
+        <a-sphere class="bridge-tint" data-orig="#35c8ff" radius="1.05" segments-width="20" segments-height="14" material="color: #35c8ff; wireframe: true; emissive: #35c8ff; emissiveIntensity: 1; transparent: true; opacity: .6" spin="axis: 0 1 0; speed: 12"></a-sphere>
+        <a-sphere class="bridge-tint" data-orig="#35c8ff" radius=".34" material="color: #35c8ff; emissive: #35c8ff; emissiveIntensity: 1.5; transparent: true; opacity: .9" animation="property: scale; from: .85 .85 .85; to: 1.15 1.15 1.15; dur: 1400; dir: alternate; loop: true; easing: easeInOutSine"></a-sphere>
+        <a-entity class="bridge-tint" data-orig="#35c8ff" glow="color: #35c8ff; size: 5.5; opacity: .6"></a-entity>
+        <a-entity rotation="22 0 12"><a-entity spin="axis: 0 1 0; speed: 34">
+          <a-torus class="bridge-tint" data-orig="#a65cff" rotation="90 0 0" radius="1.55" radius-tubular=".018" color="#a65cff" material="emissive: #a65cff; emissiveIntensity: 1.1"></a-torus>
+          <a-sphere class="bridge-tint" data-orig="#a65cff" position="1.55 0 0" radius=".1" color="#a65cff" material="emissive: #a65cff; emissiveIntensity: 1.8"></a-sphere>
+        </a-entity></a-entity>
+        <a-entity rotation="-30 0 -10"><a-entity spin="axis: 0 1 0; speed: -22">
+          <a-torus class="bridge-tint" data-orig="#57dcff" rotation="90 0 0" radius="1.95" radius-tubular=".016" color="#57dcff" material="emissive: #57dcff; emissiveIntensity: 1.1"></a-torus>
+          <a-sphere class="bridge-tint" data-orig="#57dcff" position="1.95 0 0" radius=".08" color="#57dcff" material="emissive: #57dcff; emissiveIntensity: 1.8"></a-sphere>
+        </a-entity></a-entity>
+        <a-entity rotation="8 0 -24"><a-entity spin="axis: 0 1 0; speed: 15">
+          <a-torus class="bridge-tint" data-orig="#8fb0ff" rotation="90 0 0" radius="2.35" radius-tubular=".014" color="#8fb0ff" material="emissive: #8fb0ff; emissiveIntensity: 1"></a-torus>
+          <a-sphere class="bridge-tint" data-orig="#8fb0ff" position="2.35 0 0" radius=".12" color="#8fb0ff" material="emissive: #8fb0ff; emissiveIntensity: 1.8"></a-sphere>
+        </a-entity></a-entity>
+        <a-text value="SECTOR 07 // STAR MAP" position="0 2.8 0" align="center" width="4.6" color="#9bd7ff" billboard></a-text>
+        <a-text id="route-label" value="ROUTE: UNSET" position="0 2.35 0" align="center" width="3.4" color="#ff8a9a" billboard></a-text>
+      </a-entity>
+    </a-entity>
+
+    <!-- launch authorization console (interactive) -->
+    <a-entity id="bridge-console" interactive position="0 0 -6.4">
+      <a-box position="0 .5 0" width="1.9" height="1" depth=".9" color="#233a72" material="metalness: .6; roughness: .4"></a-box>
+      <a-box position="0 .08 .46" width="1.9" height=".05" depth=".03" color="#ff3b55" class="auth-tint" data-orig="#ff3b55" material="emissive: #ff3b55; emissiveIntensity: 1.4"></a-box>
+      <a-box position="0 .92 .46" width="1.9" height=".04" depth=".03" color="#35c8ff" material="emissive: #35c8ff; emissiveIntensity: 1.3"></a-box>
+      <a-entity position="0 1.06 .05" rotation="20 0 0">
+        <a-box width="1.7" height=".08" depth=".7" color="#16264a" material="metalness: .9; roughness: .25"></a-box>
+        <a-cylinder class="auth-tint" data-orig="#ff3b55" position="0 .1 0" radius=".26" height=".1" color="#ff3b55" material="emissive: #ff3b55; emissiveIntensity: 1.6" animation="property: scale; from: 1 1 1; to: 1.12 1 1.12; dur: 700; dir: alternate; loop: true; easing: easeInOutSine"></a-cylinder>
+        <a-torus class="auth-tint" data-orig="#ff3b55" rotation="90 0 0" position="0 .07 0" radius=".34" radius-tubular=".025" color="#ff3b55" material="emissive: #ff3b55; emissiveIntensity: 1.3"></a-torus>
+      </a-entity>
+      <a-entity class="auth-tint" data-orig="#ff3b55" position="0 1.35 .2" glow="color: #ff3b55; size: 2.6; opacity: .6"></a-entity>
+      <a-text value="AUTHORIZE LAUNCH" position="0 2.15 0" align="center" width="3.2" color="#ffffff" billboard></a-text>
+      <a-text id="auth-state" value="AWAITING AUTHORIZATION" position="0 1.85 0" align="center" width="2.6" color="#ff8a9a" billboard></a-text>
+      <a-sphere class="hit" position="0 1.2 0" radius="1.1" material="opacity: 0; transparent: true; depthWrite: false"></a-sphere>
+    </a-entity>
+
+    <a-text value="COMMAND BRIDGE // FLIGHT CONTROL" position="0 6 -14" align="center" width="7.5" color="#9bd7ff" billboard></a-text>
+
+    <a-entity light="type: point; color: #35c8ff; intensity: 70; decay: 2" position="0 5 -9"></a-entity>
+    <a-entity light="type: point; color: #a65cff; intensity: 40; decay: 2" position="-6 3 -5"></a-entity>
+    <a-entity light="type: point; color: #35dfff; intensity: 30; decay: 2" position="6 3 -13"></a-entity>
+    <a-entity light="type: point; color: #ff8aa0; intensity: 14; decay: 2" position="0 2.4 -5"></a-entity>
+  </a-entity>
+
+  <!-- ==================== SCENE 4 : BIO-DOME ==================== -->
+  <a-entity id="scene-biodome" data-scene-root="biodome">
+    <a-entity nebula="c1: #031210; c2: #0d4d44; c3: #3a1a6a"></a-entity>
+    <a-entity position="30 18 -85">
+      <a-sphere radius="13" color="#1f6a58" material="roughness: 1; emissive: #0f3d33; emissiveIntensity: .5"></a-sphere>
+      <a-entity glow="color: #2dffb0; size: 42; opacity: .45"></a-entity>
+      <a-entity rotation="74 0 10"><a-torus radius="19" radius-tubular=".1" color="#7dffcf" material="emissive: #7dffcf; emissiveIntensity: .5; transparent: true; opacity: .6"></a-torus></a-entity>
+    </a-entity>
+
+    <a-plane position="0 0 -10" rotation="-90 0 0" width="38" height="38" color="#07140f" material="roughness: .85; metalness: .2"></a-plane>
+    <a-entity holo-floor="color: #2dffb0; cell: 1.5; center: 0 0 -10" position="0 .015 0"></a-entity>
+
+    <!-- geodesic glass dome -->
+    <a-sphere position="0 0 -10" radius="17" segments-width="24" segments-height="12" theta-length="90" material="color: #7affd6; transparent: true; opacity: .06; side: double; depthWrite: false; roughness: .1"></a-sphere>
+    <a-sphere position="0 0 -10" radius="17.05" segments-width="20" segments-height="8" theta-length="90" material="color: #5fffc8; wireframe: true; transparent: true; opacity: .28; emissive: #2dffb0; emissiveIntensity: .8"></a-sphere>
+    <a-torus position="0 .1 -10" rotation="90 0 0" radius="17" radius-tubular=".16" color="#0f3d33" material="emissive: #2dffb0; emissiveIntensity: .9"></a-torus>
+    <a-entity position="0 .15 -10" chase-lights="mode: ring; count: 64; radius: 16.4; color: #7dffcf; speed: .3"></a-entity>
+
+    <!-- tree of life -->
+    <a-entity id="tree" position="0 0 -10">
+      <a-cylinder position="0 .06 0" radius="3.4" height=".12" material="color: #0a3a44; emissive: #0f8a9a; emissiveIntensity: .5; transparent: true; opacity: .75; roughness: .05; metalness: .6"></a-cylinder>
+      <a-torus position="0 .12 0" rotation="90 0 0" radius="3.4" radius-tubular=".05" color="#2dffb0" material="emissive: #2dffb0; emissiveIntensity: 1.3"></a-torus>
+      <a-entity position="0 .2 0" chase-lights="mode: ring; count: 30; radius: 3.7; color: #b8ffe6; speed: -.5; size: .045"></a-entity>
+      <a-cone position="0 3 0" radius-bottom=".95" radius-top=".4" height="6" color="#14302a" material="roughness: .8; metalness: .1; emissive: #0a3a2c; emissiveIntensity: .5"></a-cone>
+      <a-torus position="0 1.2 0" rotation="90 0 0" radius=".8" radius-tubular=".03" color="#2dffb0" material="emissive: #2dffb0; emissiveIntensity: 1.4"></a-torus>
+      <a-torus position="0 2.4 0" rotation="90 0 0" radius=".7" radius-tubular=".03" color="#2dffb0" material="emissive: #2dffb0; emissiveIntensity: 1.4"></a-torus>
+      <a-torus position="0 3.6 0" rotation="90 0 0" radius=".6" radius-tubular=".03" color="#2dffb0" material="emissive: #2dffb0; emissiveIntensity: 1.4"></a-torus>
+      <a-torus position="0 4.8 0" rotation="90 0 0" radius=".5" radius-tubular=".03" color="#2dffb0" material="emissive: #2dffb0; emissiveIntensity: 1.4"></a-torus>
+      <a-entity id="canopy" position="0 7.3 0" spin="axis: 0 1 0; speed: 4"></a-entity>
+      <a-entity position="0 4 0" orbit-particles="count: 260; rIn: 1; rOut: 8; height: 8; size: .1; color: #9bffd8"></a-entity>
+      <a-entity id="tree-extra"></a-entity>
+    </a-entity>
+
+    <a-entity id="dome-flora"></a-entity>
+    <a-entity id="dome-pods"></a-entity>
+
+    <a-text value="BIO-DOME // LIFE SUPPORT" position="0 10 -10" align="center" width="8" color="#8affc2" billboard></a-text>
+    <a-text id="dome-status" value="CREW IN CRYO SLEEP — WAKE BOTH PODS" position="0 9.4 -10" align="center" width="6.4" color="#c4ffe8" billboard></a-text>
+
+    <a-entity light="type: point; color: #2dffb0; intensity: 70; decay: 2" position="0 6 -10"></a-entity>
+    <a-entity light="type: point; color: #a65cff; intensity: 40; decay: 2" position="-8 3 -14"></a-entity>
+    <a-entity light="type: point; color: #35dfff; intensity: 35; decay: 2" position="8 3 -5"></a-entity>
+    <a-entity light="type: point; color: #7dffcf; intensity: 25; decay: 2" position="0 2 -4"></a-entity>
+  </a-entity>
+
+  <!-- ==================== SCENE 5 : ESCAPE DOCK ==================== -->
+  <a-entity id="scene-dock" data-scene-root="dock">
+    <a-entity nebula="c1: #070816; c2: #3a1c6e; c3: #1c5a8a"></a-entity>
+    <a-entity position="14 9 -70">
+      <a-sphere radius="9" color="#3a2b76" material="roughness: 1; emissive: #261a58; emissiveIntensity: .5"></a-sphere>
+      <a-entity glow="color: #8a55ff; size: 28; opacity: .5"></a-entity>
+      <a-entity rotation="70 0 18"><a-torus radius="12.5" radius-tubular=".09" color="#a779e0" material="emissive: #a779e0; emissiveIntensity: .55; transparent: true; opacity: .7"></a-torus></a-entity>
+    </a-entity>
+    <a-entity id="debris-dock"></a-entity>
+    <a-plane position="0 0 -10" rotation="-90 0 0" width="28" height="28" color="#0b1226" material="roughness: .55; metalness: .6"></a-plane>
+    <a-entity holo-floor="color: #8a6bff; cell: 1; center: 0 0 -11" position="0 .015 0"></a-entity>
+
+    <a-entity position="0 .1 -11">
+      <a-cylinder segments-radial="10" radius="4" height=".3" color="#141f3a" material="metalness: .9; roughness: .3"></a-cylinder>
+      <a-torus position="0 .18 0" rotation="90 0 0" radius="3.5" radius-tubular=".06" color="#39e2ff" material="emissive: #39e2ff; emissiveIntensity: 1.3"></a-torus>
+      <a-torus position="0 .2 0" rotation="90 0 0" radius="2.8" radius-tubular=".025" color="#5b70ff" material="emissive: #5b70ff; emissiveIntensity: 1"></a-torus>
+      <a-entity position="0 .22 0" chase-lights="mode: ring; count: 44; radius: 3.8; color: #8ff0ff; speed: .5"></a-entity>
+    </a-entity>
+    <a-entity position="0 .06 -3.5" chase-lights="mode: line; count: 14; length: 5.2; color: #8ff0ff; speed: 1.4; size: .06"></a-entity>
+    <a-entity position="-.9 .06 -3.5" chase-lights="mode: line; count: 14; length: 5.2; color: #5b70ff; speed: 1.4; size: .04"></a-entity>
+    <a-entity position=".9 .06 -3.5" chase-lights="mode: line; count: 14; length: 5.2; color: #5b70ff; speed: 1.4; size: .04"></a-entity>
+
+    <!-- escape gate -->
+    <a-entity id="escape-portal" interactive position="0 2.7 -9.5">
+      <a-box position="-2.3 -1.4 0" width=".35" height="3" depth=".35" color="#18243f" material="metalness: .9; roughness: .3"></a-box>
+      <a-box position="2.3 -1.4 0" width=".35" height="3" depth=".35" color="#18243f" material="metalness: .9; roughness: .3"></a-box>
+      <a-entity spin="axis: 0 0 1; speed: 18"><a-torus id="portal-outer" radius="1.85" radius-tubular=".08" color="#a65cff" material="emissive: #a65cff; emissiveIntensity: 1.3"></a-torus></a-entity>
+      <a-entity spin="axis: 0 0 1; speed: -30"><a-torus id="portal-inner" radius="1.5" radius-tubular=".035" color="#5475ff" material="emissive: #5475ff; emissiveIntensity: 1.2"></a-torus></a-entity>
+      <a-entity id="vortex" vortex="radius: 1.38"></a-entity>
+      <a-entity id="portal-glow" glow="color: #a65cff; size: 8; opacity: .6"></a-entity>
+      <a-text id="portal-label" value="GATE READY" position="0 -2.6 .1" align="center" width="3.4" color="#ffffff"></a-text>
+      <a-sphere class="hit" radius="2.2" material="opacity: 0; transparent: true; depthWrite: false"></a-sphere>
+    </a-entity>
+
+    <!-- escape ship -->
+    <a-cylinder position="4.6 .15 -13" radius="2.2" height=".25" color="#1b2946" material="metalness: .9; roughness: .3"></a-cylinder>
+    <a-torus position="4.6 .3 -13" rotation="90 0 0" radius="1.85" radius-tubular=".05" color="#a65cff" material="emissive: #a65cff; emissiveIntensity: 1.2"></a-torus>
+    <a-entity id="escape-ship" position="4.6 1.9 -13" ship-model="size: 3.8" animation__bob="property: position; from: 4.6 1.8 -13; to: 4.6 2.0 -13; dur: 2400; dir: alternate; loop: true; easing: easeInOutSine">
+      <a-entity position="0 -.9 0" glow="color: #7a5cff; size: 5; opacity: .4"></a-entity>
+    </a-entity>
+    <a-text value="ESCAPE SHIP" position="4.6 .7 -10.6" align="center" width="3" color="#ffffff" billboard></a-text>
+    <a-text id="dock-title" value="REACTOR STABILIZED" position="0 6.2 -12" align="center" width="7" color="#8affc2" billboard></a-text>
+    <a-text value="ACTIVATE THE GATE TO COMPLETE THE MISSION" position="0 5.6 -12" align="center" width="5.4" color="#c4d8ff" billboard></a-text>
+
+    <a-entity light="type: point; color: #6e68ff; intensity: 90; decay: 2" position="0 4 -9"></a-entity>
+    <a-entity light="type: point; color: #b65cff; intensity: 50; decay: 2" position="4 3 -13"></a-entity>
+  </a-entity>
+
+  <!-- persistent player rig -->
+  <a-entity id="player-rig" position="0 0 5">
+    <a-camera id="player-camera" position="0 1.6 0" bounds look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 28"
+              cursor="rayOrigin: mouse; fuse: false" raycaster="objects: .clickable; far: 40"></a-camera>
+  </a-entity>
+</a-scene>
+
+<script>
+/* =====================================================================
+   GAME LOGIC — scene manager, mission flow, HUD
+   ===================================================================== */
+const sceneEl = document.getElementById('scene');
+const $ = s => document.querySelector(s);
+const mission = $('#mission'), hint = $('#hint'), toast = $('#toast'), segs = $('#segs').children;
+const rig = $('#player-rig'), cam = $('#player-camera');
+const fx = () => sceneEl.systems.fx;
+let toastTimer;
+
+function notify(msg) { toast.textContent = msg; toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 2600); }
+function logLine(text, kind = '') {
+  const box = $('#logLines'), d = document.createElement('div'); d.textContent = text; if (kind) d.className = kind;
+  box.prepend(d); while (box.children.length > 4) box.lastChild.remove();
+}
+function setObjective(m, h) { mission.textContent = m; hint.textContent = h; }
+/* ---------- mission progress (6 objectives: 3 nodes + launch authorization + 2 crew pods) ---------- */
+const reactorOK = () => Game.nodes.size === 3;
+const dockOK = () => reactorOK() && Game.bridge && Game.pods.size === 2;
+const progress = () => Game.nodes.size + (Game.bridge ? 1 : 0) + Game.pods.size;
+const SCENES = [
+  { id: 'arrival', name: 'ARRIVAL', ok: () => true },
+  { id: 'reactor', name: 'CYBER CORE', ok: () => true },
+  { id: 'bridge', name: 'COMMAND BRIDGE', ok: reactorOK, lock: 'COMMAND BRIDGE LOCKED — STABILIZE THE REACTOR FIRST.' },
+  { id: 'biodome', name: 'BIO-DOME', ok: reactorOK, lock: 'BIO-DOME LOCKED — STABILIZE THE REACTOR FIRST.' },
+  { id: 'dock', name: 'ESCAPE DOCK', ok: dockOK, lock: 'ESCAPE DOCK LOCKED — AUTHORIZE THE LAUNCH ON THE BRIDGE AND WAKE BOTH CREW PODS.' }
+];
+function refreshNav() {
+  SCENES.forEach((s, i) => {
+    const b = document.querySelector(`.navbtn[data-scene="${s.id}"]`), ok = s.ok();
+    b.disabled = !ok; b.innerHTML = `<kbd>${i + 1}</kbd>${s.name}${ok ? '' : ' 🔒'}`; b.classList.toggle('active', s.id === Game.scene);
+  });
+}
+function tintAll(sel, hex, root = document) { root.querySelectorAll(sel).forEach(e => tintEntity(e, new THREE.Color(hex || e.dataset.orig))); }
+function refreshHUD() {
+  const n = Game.nodes.size, p = progress(), sc = Game.scene; [...segs].forEach((s, i) => s.classList.toggle('on', i < p));
+  if (Game.launching || Game.done) return;
+  if (!reactorOK()) {
+    if (sc === 'reactor') setObjective(`RESTORE POWER NODES (${n}/3)`, 'Click the glowing power nodes. Each one stabilizes the core.');
+    else setObjective('REACH THE REACTOR CONTROL ROOM', 'WASD to move, drag to look. Use the NAV CONSOLE or press 2 to enter the reactor.');
+    return;
+  }
+  if (dockOK()) { setObjective(sc === 'dock' ? 'ACTIVATE THE ESCAPE GATE' : 'ALL SYSTEMS READY — GO TO THE ESCAPE DOCK', sc === 'dock' ? 'Everything is ready. Click the gate to launch.' : 'Press 5 or use ESCAPE DOCK to launch.'); return; }
+  if (sc === 'bridge') setObjective(Game.bridge ? 'LAUNCH AUTHORIZED' : 'AUTHORIZE THE LAUNCH', Game.bridge ? 'Transferring to the Bio-Dome to wake the crew…' : 'Click the flashing console in front of the star map.');
+  else if (sc === 'biodome') setObjective(Game.pods.size === 2 ? 'CREW AWAKE' : `WAKE THE CREW PODS (${Game.pods.size}/2)`, Game.pods.size === 2 ? 'Now authorize the launch on the Command Bridge (press 3).' : 'Click each glowing cryo pod to wake its crew member.');
+  else {
+    const left = []; if (!Game.bridge) left.push('authorize the launch on the COMMAND BRIDGE (3)'); if (Game.pods.size < 2) left.push(`wake the crew in the BIO-DOME (4) — ${Game.pods.size}/2`);
+    setObjective('REACTOR STABLE — PREPARE TO ESCAPE', 'Remaining: ' + left.join(', then ') + '.');
+  }
+}
+function refreshClickables() {
+  document.querySelectorAll('.hit').forEach(h => {
+    const root = h.closest('[data-scene-root]');
+    h.classList.toggle('clickable', !!root && root.dataset.sceneRoot === Game.scene && !Game.busy);
+  });
+  document.body.classList.remove('pointer');
+  document.querySelectorAll('[interactive]').forEach(e => e.components.interactive && e.components.interactive.reset());
+}
+function applyScene(name) {
+  Game.scene = name;
+  SCENES.forEach(s => $('#scene-' + s.id).setAttribute('visible', s.id === name));
+  refreshNav();
+  cam.object3D.position.set(0, 1.6, 0);
+  const lc = cam.components['look-controls']; if (lc && lc.pitchObject) { lc.pitchObject.rotation.set(0, 0, 0); lc.yawObject.rotation.set(0, 0, 0); }
+  refreshHUD();
+}
+function dolly(from, to, dur) {
+  rig.removeAttribute('animation__dolly'); rig.setAttribute('position', from);
+  rig.setAttribute('animation__dolly', { property: 'position', from, to, dur, easing: 'easeOutCubic' });
+}
+async function goTo(name) {
+  if (Game.busy || name === Game.scene || !Game.started) return;
+  const def = SCENES.find(s => s.id === name); if (!def) return;
+  if (!def.ok()) { Sfx.deny(); notify(def.lock); return; }
+  Game.busy = true; refreshClickables(); Sfx.whoosh();
+  $('#fade').classList.add('on'); await wait(480);
+  applyScene(name); dolly('0 0 5', '0 0 1', 1900);
+  const msg = { arrival: 'Arrival platform. Systems nominal.', reactor: Game.nodes.size < 3 ? 'Core chamber: critical instability detected.' : 'Core chamber: reactor stable.', bridge: Game.bridge ? 'Command bridge: launch already authorized.' : 'Command bridge: star map online, awaiting authorization.', biodome: Game.pods.size === 2 ? 'Bio-Dome: crew awake and safe.' : 'Bio-Dome: two crew members still in cryo sleep.', dock: 'Escape dock: gate standing by.' };
+  logLine(msg[name], name === 'reactor' && Game.nodes.size < 3 ? 'warn' : '');
+  await wait(120); $('#fade').classList.remove('on'); await wait(500);
+  Game.busy = false; refreshClickables();
+}
+
+/* ---------- power nodes ---------- */
+const NODE_POS = [[-4.2, 1.7, -7.2], [4.2, 1.8, -9.3], [-3.9, 1.8, -13.2]];
+function nodeHTML(id, [x, y, z]) {
+  const base = '#6378ff', m = `emissive: ${base}; emissiveIntensity: 1.3`;
+  return `<a-entity class="power-node" id="node${id}" data-node="${id}" interactive position="${x} ${y} ${z}">
+    <a-cylinder segments-radial="6" radius=".62" height=".16" position="0 -.86 0" color="#16213c" material="metalness: .9; roughness: .3"></a-cylinder>
+    <a-cylinder segments-radial="6" radius=".4" height=".55" position="0 -.55 0" color="#0f1a31" material="metalness: .9; roughness: .35"></a-cylinder>
+    <a-torus class="node-tint" rotation="90 0 0" position="0 -.76 0" radius=".66" radius-tubular=".02" color="${base}" material="${m}"></a-torus>
+    <a-entity spin="axis: 0 1 0; speed: 55"><a-torus class="node-tint" rotation="70 0 0" radius=".56" radius-tubular=".026" color="${base}" material="${m}"></a-torus></a-entity>
+    <a-entity spin="axis: 0 1 0; speed: -38"><a-torus class="node-tint" rotation="-60 0 30" radius=".42" radius-tubular=".02" color="${base}" material="${m}"></a-torus></a-entity>
+    <a-sphere class="node-tint" radius=".23" color="${base}" material="${m}" animation="property: scale; from: .88 .88 .88; to: 1.14 1.14 1.14; dur: ${1200 + id * 200}; dir: alternate; loop: true; easing: easeInOutSine"></a-sphere>
+    <a-entity class="node-tint" glow="color: ${base}; size: 2.3; opacity: .75"></a-entity>
+    <a-text value="POWER NODE 0${id}" position="0 -1.2 0" align="center" width="2.6" color="#f1f5ff" billboard></a-text>
+    <a-text id="nodeState${id}" value="OFFLINE" position="0 -1.45 0" align="center" width="2" color="#ff8a9a" billboard></a-text>
+    <a-sphere class="hit" radius=".95" material="opacity: 0; transparent: true; depthWrite: false"></a-sphere>
+  </a-entity>`;
+}
+$('#nodes').insertAdjacentHTML('beforeend', NODE_POS.map((p, i) => nodeHTML(i + 1, p)).join(''));
+$('#pylons').insertAdjacentHTML('beforeend', [-7.5, 7.5].map(x => `<a-entity position="${x} 2.5 -10">
+  <a-cylinder radius=".17" height="5" color="#243252" material="metalness: .9; roughness: .35"></a-cylinder>
+  <a-torus position="0 1.5 0" rotation="90 0 0" radius=".45" radius-tubular=".035" color="#3e62d5" material="emissive: #3e62d5; emissiveIntensity: 1"></a-torus>
+  <a-torus position="0 -1.5 0" rotation="90 0 0" radius=".45" radius-tubular=".035" color="#3e62d5" material="emissive: #3e62d5; emissiveIntensity: 1"></a-torus>
+  <a-entity position="0 1.5 0" glow="color: #4a70ff; size: 1.6; opacity: .6"></a-entity></a-entity>`).join(''));
+// rear colonnade
+(function () {
+  let html = '';
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI * (.12 + i / 8 * .76), x = Math.cos(a) * 12.5, z = -10 - Math.sin(a) * 12 + 2;
+    html += `<a-entity position="${x.toFixed(2)} 3 ${z.toFixed(2)}"><a-box width=".6" height="6" depth=".6" color="#0e1830" material="metalness: .9; roughness: .35"></a-box>
+      <a-box position="0 0 ${z < -10 ? '.31' : '-.31'}" width=".1" height="5.4" depth=".02" color="#3e62d5" material="emissive: #3e62d5; emissiveIntensity: 1.2"></a-box></a-entity>`;
+  }
+  $('#columns').insertAdjacentHTML('beforeend', html);
+})();
+// asteroid debris + distant towers
+function makeDebris(sel, count) {
+  const p = $(sel);
+  for (let i = 0; i < count; i++) {
+    const e = document.createElement('a-entity'), a = rand(0, 6.283), d = rand(30, 80);
+    e.setAttribute('geometry', `primitive: dodecahedron; radius: ${rand(.4, 2.6).toFixed(2)}`);
+    e.setAttribute('material', 'color: #2b3760; roughness: 1; metalness: .1; flatShading: true; emissive: #0b1330; emissiveIntensity: .4');
+    e.setAttribute('position', `${(Math.cos(a) * d).toFixed(1)} ${rand(-4, 22).toFixed(1)} ${(-Math.abs(Math.sin(a)) * d - 14).toFixed(1)}`);
+    e.setAttribute('rotation', `${rand(0, 360)} ${rand(0, 360)} 0`);
+    e.setAttribute('spin', `axis: ${rand(-1, 1).toFixed(2)} ${rand(-1, 1).toFixed(2)} ${rand(-1, 1).toFixed(2)}; speed: ${rand(1, 8).toFixed(1)}`);
+    p.appendChild(e);
+  }
+}
+makeDebris('#debris-arrival', 36); makeDebris('#debris-dock', 30);
+
+/* ---------- set dressing: command bridge ---------- */
+(function buildBridge() {
+  let h = '';
+  for (let a = -75; a <= 75; a += 15) {
+    const r = a * Math.PI / 180, x = 13 * Math.sin(r), z = -8 - 13 * Math.cos(r), x2 = 12.78 * Math.sin(r), z2 = -8 - 12.78 * Math.cos(r);
+    h += `<a-box position="${x.toFixed(2)} 3.65 ${z.toFixed(2)}" width=".4" height="7.3" depth=".4" color="#0e1830" material="metalness: .9; roughness: .35"></a-box>`;
+    h += `<a-box position="${x2.toFixed(2)} 3.65 ${z2.toFixed(2)}" rotation="0 ${180 - a} 0" width=".08" height="6.6" depth=".02" color="#35c8ff" material="emissive: #35c8ff; emissiveIntensity: 1.3"></a-box>`;
+  }
+  $('#bridge-ribs').insertAdjacentHTML('beforeend', h);
+
+  const consoleHTML = (x, z, ry, title, rows) => {
+    let bars = '';
+    for (let i = 0; i < 6; i++) {
+      const hh = rand(.18, .55);
+      bars += `<a-box position="${(-1 + i * .2).toFixed(2)} ${(1.2 + hh / 2).toFixed(2)} -.22" width=".14" height="${hh.toFixed(2)}" depth=".02" color="#57dcff" material="emissive: #57dcff; emissiveIntensity: 1.2" animation="property: scale; from: 1 .55 1; to: 1 1.15 1; dur: ${Math.floor(rand(700, 1800))}; dir: alternate; loop: true; easing: easeInOutSine"></a-box>`;
+    }
+    const txt = rows.map((t, j) => `<a-text value="${t}" position=".62 ${(1.95 - j * .25).toFixed(2)} -.22" align="center" width="1.25" color="#9bd7ff"></a-text>`).join('');
+    return `<a-entity position="${x} 0 ${z}" rotation="0 ${ry} 0">
+      <a-box position="0 .5 0" width="2.7" height="1" depth=".9" color="#0f1a35" material="metalness: .9; roughness: .3"></a-box>
+      <a-box position="0 1.02 .3" width="2.5" height=".05" depth=".25" color="#35c8ff" material="emissive: #35c8ff; emissiveIntensity: 1"></a-box>
+      <a-box position="0 1.7 -.32" width="2.7" height="1.45" depth=".14" color="#0b1428" material="metalness: .9; roughness: .3"></a-box>
+      <a-plane position="0 1.7 -.24" width="2.45" height="1.2" color="#06223a" material="emissive: #0c6a9a; emissiveIntensity: .55"></a-plane>
+      <a-text value="${title}" position="0 2.25 -.22" align="center" width="2.2" color="#ffffff"></a-text>${bars}${txt}
+      <a-entity position="0 1.8 -.1" glow="color: #35c8ff; size: 3.6; opacity: .25"></a-entity></a-entity>`;
+  };
+  $('#bridge-consoles').insertAdjacentHTML('beforeend',
+    consoleHTML(-6.2, -9, 28, 'NAVIGATION', ['HEADING 044', 'DRIFT 0.2', 'FUEL 81%', 'ORBIT STABLE']) +
+    consoleHTML(6.2, -9, -28, 'COMMS', ['LINK 99%', 'RELAY 07', 'CHANNELS 12', 'SIGNAL CLEAR']) +
+    consoleHTML(-9.5, -14.5, 55, 'SENSORS', ['RANGE 40 KM', 'DEBRIS LOW', 'HULL 98%', 'NO THREATS']) +
+    consoleHTML(9.5, -14.5, -55, 'LIFE SUPPORT', ['O2 100%', 'DOME GREEN', 'CREW 2/2', 'CRYO ACTIVE']));
+})();
+
+/* ---------- set dressing: bio-dome ---------- */
+(function buildDome() {
+  const cz = -10, pal = ['#2dffb0', '#5cffd9', '#7dd6ff', '#b69cff'], f = n => n.toFixed(2);
+  // glowing canopy
+  let can = '';
+  for (let i = 0; i < 46; i++) {
+    const u = Math.random() * 2 - 1, a = rand(0, 6.283), s = Math.sqrt(1 - u * u), r = 3.2 * Math.cbrt(Math.random()), c = pal[i % pal.length];
+    can += `<a-sphere position="${f(r * s * Math.cos(a))} ${f(r * u * .7)} ${f(r * s * Math.sin(a))}" radius="${f(rand(.3, .9))}" material="color: ${c}; emissive: ${c}; emissiveIntensity: .6; transparent: true; opacity: .78"></a-sphere>`;
+  }
+  can += `<a-entity glow="color: #2dffb0; size: 12; opacity: .3"></a-entity><a-entity position="1.4 .6 .8" glow="color: #b69cff; size: 6; opacity: .3"></a-entity><a-entity position="-1.5 -.2 -1" glow="color: #7dd6ff; size: 6; opacity: .3"></a-entity>`;
+  $('#canopy').insertAdjacentHTML('beforeend', can);
+
+  // roots, hanging vines, hex planters (local to the tree)
+  let t = '';
+  for (let i = 0; i < 7; i++) {
+    const a = i / 7 * 360 + rand(-10, 10), r = a * Math.PI / 180;
+    t += `<a-cone position="${f(Math.cos(r) * 1.6)} .3 ${f(Math.sin(r) * 1.6)}" rotation="0 ${f(-a)} -72" radius-bottom=".32" radius-top=".04" height="2.6" color="#14302a" material="emissive: #0a3a2c; emissiveIntensity: .5"></a-cone>`;
+  }
+  for (let i = 0; i < 16; i++) {
+    const a = rand(0, 6.283), r = rand(1.4, 3.3), len = rand(1.6, 3.8), x = f(Math.cos(a) * r), z = f(Math.sin(a) * r);
+    t += `<a-cylinder position="${x} ${f(6.9 - len / 2)} ${z}" radius=".018" height="${f(len)}" color="#2dffb0" material="emissive: #2dffb0; emissiveIntensity: .8"></a-cylinder>`;
+    t += `<a-sphere position="${x} ${f(6.9 - len)} ${z}" radius=".09" material="color: #b69cff; emissive: #b69cff; emissiveIntensity: 1.6"></a-sphere>`;
+  }
+  [0, 60, 120, 180, 240, 300].forEach(deg => {
+    const r = deg * Math.PI / 180, px = Math.cos(r) * 5.4, pz = Math.sin(r) * 5.4;
+    t += `<a-entity position="${f(px)} 0 ${f(pz)}"><a-cylinder segments-radial="6" position="0 .25 0" radius="1.05" height=".5" color="#10201c" material="metalness: .7; roughness: .4"></a-cylinder>
+      <a-torus position="0 .52 0" rotation="90 0 0" radius=".95" radius-tubular=".03" color="#2dffb0" material="emissive: #2dffb0; emissiveIntensity: 1.2"></a-torus>`;
+    for (let k = 0; k < 5; k++) {
+      const c = pal[(k + deg / 60) % 4 | 0], ang = rand(0, 6.283), rr = rand(0, .6);
+      t += `<a-cone position="${f(Math.cos(ang) * rr)} ${f(.5 + .35)} ${f(Math.sin(ang) * rr)}" rotation="${f(rand(-14, 14))} 0 ${f(rand(-14, 14))}" radius-bottom=".12" radius-top="0" height="${f(rand(.7, 1.5))}" color="${c}" material="emissive: ${c}; emissiveIntensity: 1"></a-cone>`;
+    }
+    t += `<a-entity position="0 .9 0" glow="color: #2dffb0; size: 2.4; opacity: .5"></a-entity></a-entity>`;
+  });
+  $('#tree-extra').insertAdjacentHTML('beforeend', t);
+
+  // bioluminescent mushrooms + light stalks (world space)
+  const podSpots = [[-6.4, -6.8], [6.6, -6.8]], mc = ['#b69cff', '#ff7ad9', '#57dcff', '#7dffcf'], free = (x, z) => !podSpots.some(([px, pz]) => Math.hypot(x - px, z - pz) < 2.8) && Math.hypot(x, z - 1) > 4.5;
+  let fl = '';
+  for (let i = 0; i < 28; i++) {
+    let x, z, n = 0; do { const a = rand(0, 6.283), r = rand(7.2, 15.5); x = Math.cos(a) * r; z = cz + Math.sin(a) * r; n++; } while (n < 20 && !free(x, z));
+    const hh = rand(.25, .9), s = rand(.18, .5), c = mc[i % 4];
+    fl += `<a-entity position="${f(x)} 0 ${f(z)}"><a-cylinder position="0 ${f(hh / 2)} 0" radius="${f(s * .2)}" height="${f(hh)}" color="#d8e8ff" material="emissive: #7dd6ff; emissiveIntensity: .25"></a-cylinder>
+      <a-sphere position="0 ${f(hh)} 0" radius="${f(s)}" theta-length="90" scale="1 .7 1" material="color: ${c}; emissive: ${c}; emissiveIntensity: .8; side: double"></a-sphere>
+      ${i % 3 === 0 ? `<a-entity position="0 ${f(hh + .1)} 0" glow="color: ${c}; size: ${f(s * 7)}; opacity: .5"></a-entity>` : ''}</a-entity>`;
+  }
+  for (let i = 0; i < 16; i++) {
+    let x, z, n = 0; do { const a = rand(0, 6.283), r = rand(7, 15.5); x = Math.cos(a) * r; z = cz + Math.sin(a) * r; n++; } while (n < 20 && !free(x, z));
+    const hh = rand(2, 5), c = pal[i % 4];
+    fl += `<a-cylinder position="${f(x)} ${f(hh / 2)} ${f(z)}" radius=".025" height="${f(hh)}" color="#14302a" material="emissive: #2dffb0; emissiveIntensity: .5"></a-cylinder>
+      <a-sphere position="${f(x)} ${f(hh)} ${f(z)}" radius=".14" material="color: ${c}; emissive: ${c}; emissiveIntensity: 1.8"></a-sphere>
+      <a-entity position="${f(x)} ${f(hh)} ${f(z)}" glow="color: ${c}; size: 1.8; opacity: .7"></a-entity>`;
+  }
+  $('#dome-flora').insertAdjacentHTML('beforeend', fl);
+
+  // cryo crew pods (interactive)
+  const podHTML = (id, x, z, ry, name) => `<a-entity class="crew-pod" id="pod${id}" data-pod="${id}" interactive position="${x} 0 ${z}" rotation="0 ${ry} 0">
+    <a-cylinder radius=".9" height=".25" position="0 .12 0" color="#13202a" material="metalness: .9; roughness: .3"></a-cylinder>
+    <a-torus class="pod-tint" data-orig="#5b9bff" rotation="90 0 0" position="0 .27 0" radius=".78" radius-tubular=".03" color="#5b9bff" material="emissive: #5b9bff; emissiveIntensity: 1.2"></a-torus>
+    <a-cylinder radius=".66" height="2" position="0 1.3 0" open-ended="true" material="color: #bfe9ff; transparent: true; opacity: .14; side: double; roughness: .05; metalness: .4; depthWrite: false"></a-cylinder>
+    <a-sphere radius=".66" position="0 2.3 0" theta-length="90" material="color: #bfe9ff; transparent: true; opacity: .14; side: double; roughness: .05; metalness: .4; depthWrite: false"></a-sphere>
+    <a-torus rotation="90 0 0" position="0 2.3 0" radius=".66" radius-tubular=".04" color="#26364f" material="metalness: .9; roughness: .3"></a-torus>
+    <a-sphere class="pod-tint" data-orig="#5b9bff" radius=".18" position="0 1.95 0" color="#5b9bff" material="emissive: #5b9bff; emissiveIntensity: 1.4"></a-sphere>
+    <a-cylinder class="pod-tint" data-orig="#5b9bff" radius=".24" height=".95" position="0 1.3 0" color="#5b9bff" material="emissive: #5b9bff; emissiveIntensity: 1; transparent: true; opacity: .75"></a-cylinder>
+    <a-entity class="pod-tint" data-orig="#5b9bff" position="0 1.4 0" glow="color: #5b9bff; size: 3.2; opacity: .5"></a-entity>
+    <a-box position="0 .8 1" width=".9" height=".55" depth=".08" color="#0c1626" material="metalness: .9; roughness: .3"></a-box>
+    <a-plane position="0 .8 1.05" width=".8" height=".45" color="#06223a" material="emissive: #0c6a9a; emissiveIntensity: .5"></a-plane>
+    <a-text value="${name}" position="0 .92 1.06" align="center" width="1.2" color="#ffffff"></a-text>
+    <a-text id="podState${id}" value="CRYO SLEEP" position="0 .7 1.06" align="center" width="1.2" color="#9fc8ff"></a-text>
+    <a-sphere class="hit" radius="1.5" position="0 1.4 0" material="opacity: 0; transparent: true; depthWrite: false"></a-sphere></a-entity>`;
+  $('#dome-pods').insertAdjacentHTML('beforeend', podHTML(1, -6.4, -6.8, 32, 'CREW 01 // ENG. KAI') + podHTML(2, 6.6, -6.8, -32, 'CREW 02 // DR. MAYA'));
+})();
+(function () {
+  let h = '';
+  [[-30, -50, 14], [34, -60, 20], [-48, -42, 10], [52, -48, 16]].forEach(([x, z, ht]) => {
+    h += `<a-entity position="${x} ${ht / 2 - 1} ${z}"><a-cylinder radius=".9" height="${ht}" color="#101a36" material="metalness: .8; roughness: .4"></a-cylinder>
+      <a-torus position="0 ${ht / 4} 0" rotation="90 0 0" radius="2.4" radius-tubular=".08" color="#3e62d5" material="emissive: #3e62d5; emissiveIntensity: .9"></a-torus>
+      <a-sphere position="0 ${ht / 2 + .3} 0" radius=".18" color="#ff4d6d" material="emissive: #ff4d6d; emissiveIntensity: 2" animation="property: scale; to: 1.8 1.8 1.8; dur: 900; dir: alternate; loop: true"></a-sphere></a-entity>`;
+  });
+  $('#towers-arrival').insertAdjacentHTML('beforeend', h);
+})();
+
+function setTint(node, hex) {
+  const c = new THREE.Color(hex);
+  node.querySelectorAll('.node-tint').forEach(e => tintEntity(e, c));
+}
+function activateNode(el) {
+  if (Game.busy || Game.scene !== 'reactor') return;
+  const id = el.dataset.node;
+  if (Game.nodes.has(id)) { Sfx.deny(); notify(`POWER NODE ${id} IS ALREADY ONLINE.`); return; }
+  Game.nodes.add(id); const n = Game.nodes.size;
+  setTint(el, '#39ff98'); const st = $('#nodeState' + id); st.setAttribute('value', 'ONLINE'); st.setAttribute('color', '#8affc2');
+  $('#beam' + id).setAttribute('energy-beam', 'on', true);
+  const wp = new THREE.Vector3(); el.object3D.getWorldPosition(wp); fx().burst(wp, 0x39ff98); fx().ring(wp, 0x39ff98);
+  Game.targetStability = STABILITY_BY_NODES[n]; Sfx.activate(n); Sfx.tension(Game.targetStability);
+  logLine(`Power node 0${id} online. Core stability ${Math.round(STABILITY_BY_NODES[n] * 100)}%.`, 'ok');
+  if (n < 3) notify(`POWER NODE ${id} ONLINE — ${3 - n} REMAINING.`);
+  else {
+    Sfx.stable(); fx().burst(new THREE.Vector3(0, 2.7, -10), 0x39ff98, 220); fx().ring(new THREE.Vector3(0, 0, -10), 0x39ff98);
+    const cs = $('#core-status'); cs.setAttribute('value', 'CORE STABLE'); cs.setAttribute('color', '#8affc2');
+    refreshNav(); logLine('Reactor stable. Transferring to the Command Bridge.', 'ok'); notify('CORE RESTORED — PROCEEDING TO THE COMMAND BRIDGE…'); autoAdvance('reactor', 'bridge', 3200);
+  }
+  refreshHUD();
+}
+document.querySelectorAll('.power-node').forEach(n => n.addEventListener('click', () => activateNode(n)));
+$('#arrival-console').addEventListener('click', () => { if (!Game.busy && Game.scene === 'arrival') { Sfx.click(); goTo('reactor'); } });
+
+/* ---------- launch sequence ---------- */
+async function launch() {
+  if (Game.busy || Game.launching || Game.done || Game.scene !== 'dock' || !dockOK()) return;
+  Game.launching = true; Game.busy = true; refreshClickables(); Sfx.click(); Sfx.launch();
+  const ship = $('#escape-ship');
+  $('#vortex').setAttribute('vortex', 'boost', 1);
+  ['portal-outer', 'portal-inner'].forEach(id => { const e = $('#' + id); e.setAttribute('color', '#39ff98'); tintEntity(e, new THREE.Color('#39ff98')); });
+  $('#portal-glow').setAttribute('glow', 'color', '#39ff98');
+  const lbl = $('#portal-label'); lbl.setAttribute('value', 'LAUNCHING'); lbl.setAttribute('color', '#39ff98');
+  setObjective('LAUNCH SEQUENCE ENGAGED', 'Hold position. The escape ship is entering the gate.'); logLine('Gate energized. Ship cleared for departure.', 'ok');
+  ship.removeAttribute('animation__bob');
+  ship.setAttribute('animation__turn', { property: 'rotation', to: '0 128 0', dur: 1200, easing: 'easeInOutQuad' });
+  ship.setAttribute('animation__fly', { property: 'position', to: '0 2.7 -9.5', dur: 2600, delay: 700, easing: 'easeInCubic' });
+  ship.setAttribute('animation__shrink', { property: 'scale', to: '.08 .08 .08', dur: 2600, delay: 700, easing: 'easeInCubic' });
+  rig.setAttribute('animation__dolly', { property: 'position', to: '0 0 -1.5', dur: 3600, easing: 'easeInQuad' });
+  await wait(3300);
+  $('#flash').classList.add('on'); fx().setWarp(true); fx().burst(new THREE.Vector3(0, 2.7, -9.5), 0x39ff98, 240);
+  await wait(250); $('#flash').classList.remove('on');
+  await wait(1500);
+  Game.done = true;
+  const sec = Math.round((performance.now() - Game.t0) / 1000);
+  $('#statTime').textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  $('#statRank').textContent = sec < 150 ? 'S' : sec < 240 ? 'A' : sec < 360 ? 'B' : 'C';
+  setObjective('MISSION COMPLETE', 'ORBITAL REACTOR PROTOCOL COMPLETE. You restored the core, woke the crew and escaped.');
+  $('#end').classList.add('show'); logLine('Escape successful. Protocol complete.', 'ok');
+}
+$('#escape-portal').addEventListener('click', launch);
+
+/* ---------- command bridge: authorize launch ---------- */
+async function autoAdvance(from, to, delay = 2600) {
+  await wait(delay);
+  while (Game.busy && Game.scene === from) await wait(200);
+  if (Game.scene !== from || Game.launching || Game.done) return;
+  goTo(to);
+}
+function checkDockUnlock() {
+  if (!dockOK()) return;
+  Sfx.stable(); logLine('All systems ready. Escape dock unlocked.', 'ok'); notify('ALL SYSTEMS READY — TRANSFERRING TO THE ESCAPE DOCK…');
+}
+function authorizeLaunch() {
+  if (Game.busy || Game.scene !== 'bridge') return;
+  if (Game.bridge) { Sfx.deny(); notify('LAUNCH ALREADY AUTHORIZED.'); return; }
+  Game.bridge = true; Sfx.activate(3); Sfx.click();
+  tintAll('.bridge-tint', '#39ff98'); tintAll('.auth-tint', '#39ff98');
+  const a = $('#auth-state'); a.setAttribute('value', 'LAUNCH AUTHORIZED'); a.setAttribute('color', '#8affc2');
+  const r = $('#route-label'); r.setAttribute('value', 'ROUTE: ESCAPE VECTOR LOCKED'); r.setAttribute('color', '#8affc2');
+  fx().burst(new THREE.Vector3(0, 1.4, -6.4), 0x39ff98, 160); fx().ring(new THREE.Vector3(0, 0, -6.4), 0x39ff98); fx().burst(new THREE.Vector3(0, 3, -10), 0x57dcff, 160);
+  logLine('Launch authorized. Escape vector locked.', 'ok');
+  if (dockOK()) { checkDockUnlock(); autoAdvance('bridge', 'dock'); } else { notify('LAUNCH AUTHORIZED — PROCEEDING TO THE BIO-DOME…'); autoAdvance('bridge', 'biodome'); }
+  refreshNav(); refreshHUD();
+}
+$('#bridge-console').addEventListener('click', authorizeLaunch);
+
+/* ---------- bio-dome: wake the crew ---------- */
+const CREW = { 1: 'Engineer Kai', 2: 'Dr. Maya' };
+function wakePod(el) {
+  if (Game.busy || Game.scene !== 'biodome') return;
+  const id = el.dataset.pod;
+  if (Game.pods.has(id)) { Sfx.deny(); notify(`CREW POD ${id} IS ALREADY AWAKE.`); return; }
+  Game.pods.add(id); Sfx.activate(Game.pods.size);
+  tintAll('.pod-tint', '#39ff98', el);
+  const st = $('#podState' + id); st.setAttribute('value', 'AWAKE'); st.setAttribute('color', '#8affc2');
+  const wp = new THREE.Vector3(); el.object3D.getWorldPosition(wp); wp.y = 1.4; fx().burst(wp, 0x39ff98, 150); fx().ring(wp, 0x39ff98);
+  logLine(`${CREW[id]} is awake and responsive.`, 'ok');
+  const ds = $('#dome-status');
+  if (Game.pods.size === 2) { ds.setAttribute('value', 'CREW AWAKE AND SAFE'); ds.setAttribute('color', '#8affc2'); }
+  if (dockOK()) { checkDockUnlock(); autoAdvance('biodome', 'dock'); }
+  else if (Game.pods.size === 2) { notify('CREW SAFE — PROCEEDING TO THE COMMAND BRIDGE…'); autoAdvance('biodome', 'bridge'); }
+  else notify(`${CREW[id].toUpperCase()} AWAKE — 1 CREW POD REMAINING.`);
+  refreshNav(); refreshHUD();
+}
+document.querySelectorAll('.crew-pod').forEach(p => p.addEventListener('click', () => wakePod(p)));
+
+function resetMission() {
+  Game.nodes.clear(); Game.targetStability = Game.stability = .12; Game.launching = false; Game.done = false;
+  document.querySelectorAll('.power-node').forEach(n => { setTint(n, '#6378ff'); const id = n.dataset.node; $('#nodeState' + id).setAttribute('value', 'OFFLINE'); $('#nodeState' + id).setAttribute('color', '#ff8a9a'); $('#beam' + id).setAttribute('energy-beam', 'on', false); });
+  const cs = $('#core-status'); cs.setAttribute('value', '!! CORE UNSTABLE !!'); cs.setAttribute('color', '#ff6b80');
+  $('#vortex').setAttribute('vortex', 'boost', 0);
+  ['portal-outer', 'portal-inner'].forEach((id, i) => { const e = $('#' + id); const c = i ? '#5475ff' : '#a65cff'; e.setAttribute('color', c); tintEntity(e, new THREE.Color(c)); });
+  $('#portal-glow').setAttribute('glow', 'color', '#a65cff');
+  const lbl = $('#portal-label'); lbl.setAttribute('value', 'GATE READY'); lbl.setAttribute('color', '#ffffff');
+  const ship = $('#escape-ship'); ['animation__turn', 'animation__fly', 'animation__shrink'].forEach(a => ship.removeAttribute(a));
+  ship.setAttribute('position', '4.6 1.9 -13'); ship.setAttribute('rotation', '0 0 0'); ship.setAttribute('scale', '1 1 1');
+  ship.setAttribute('animation__bob', 'property: position; from: 4.6 1.8 -13; to: 4.6 2.0 -13; dur: 2400; dir: alternate; loop: true; easing: easeInOutSine');
+  fx().setWarp(false); Sfx.tension(.12);
+  Game.bridge = false; Game.pods.clear(); tintAll('.bridge-tint'); tintAll('.auth-tint'); tintAll('.pod-tint');
+  $('#auth-state').setAttribute('value', 'AWAITING AUTHORIZATION'); $('#auth-state').setAttribute('color', '#ff8a9a');
+  $('#route-label').setAttribute('value', 'ROUTE: UNSET'); $('#route-label').setAttribute('color', '#ff8a9a');
+  document.querySelectorAll('.crew-pod').forEach(p => { const st = $('#podState' + p.dataset.pod); st.setAttribute('value', 'CRYO SLEEP'); st.setAttribute('color', '#9fc8ff'); });
+  $('#dome-status').setAttribute('value', 'CREW IN CRYO SLEEP — WAKE BOTH PODS'); $('#dome-status').setAttribute('color', '#c4ffe8');
+  refreshNav();
+}
+
+/* ---------- navigation, keyboard, audio ---------- */
+document.querySelectorAll('.navbtn[data-scene]').forEach(b => b.addEventListener('click', () => { Sfx.click(); goTo(b.dataset.scene); }));
+const soundBtn = $('#soundBtn');
+function toggleSound() { Sfx.init(); Sfx.setMuted(!Game.muted); soundBtn.textContent = Game.muted ? 'SOUND OFF' : 'SOUND ON'; }
+soundBtn.addEventListener('click', toggleSound);
+window.addEventListener('keydown', e => {
+  if (!Game.started) return;
+  const target = SCENES[parseInt(e.key, 10) - 1]; if (target) goTo(target.id);
+  else if (e.key === 'm' || e.key === 'M') toggleSound();
+  else if (e.key === 'Escape') $('#end').classList.remove('show');
+});
+$('#stayBtn').addEventListener('click', () => $('#end').classList.remove('show'));
+$('#replayBtn').addEventListener('click', async () => {
+  $('#end').classList.remove('show'); Game.busy = true; $('#fade').classList.add('on'); await wait(500);
+  resetMission(); applyScene('arrival'); dolly('0 0 5', '0 0 1', 1900); Game.t0 = performance.now();
+  logLine('Protocol restarted.', 'warn'); await wait(150); $('#fade').classList.remove('on'); await wait(500); Game.busy = false; refreshClickables();
+});
+
+/* ---------- procedural reflection environment + tone mapping ---------- */
+function buildEnvironment() {
+  try {
+    const r = sceneEl.renderer; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.15;
+    const pm = new THREE.PMREMGenerator(r), env = new THREE.Scene();
+    env.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), new THREE.ShaderMaterial({
+      side: THREE.BackSide, vertexShader: 'varying vec3 v; void main(){ v=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+      fragmentShader: 'varying vec3 v; void main(){ float h=normalize(v).y; gl_FragColor=vec4(mix(vec3(.02,.04,.1),vec3(.12,.2,.45),smoothstep(-.3,.9,h)),1.); }'
+    })));
+    const strip = (w, h, c, x, y, z, ry) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(6), side: THREE.DoubleSide })); m.position.set(x, y, z); m.rotation.y = ry; env.add(m); };
+    strip(8, .6, '#4de2ff', 0, 5, -8, 0); strip(8, .6, '#a65cff', 8, 3, 0, Math.PI / 2); strip(6, .5, '#ffffff', -8, 6, 2, Math.PI / 2); strip(10, .4, '#5b70ff', 0, 8, 6, 0);
+    sceneEl.object3D.environment = pm.fromScene(env, .03).texture; sceneEl.object3D.environmentIntensity = .55; pm.dispose();
+  } catch (e) { console.warn('Environment setup skipped:', e); }
+}
+
+/* ---------- boot ---------- */
+const fill = p => $('#loadfill').style.width = p + '%', startBtn = $('#startBtn');
+const sceneReady = new Promise(r => sceneEl.hasLoaded ? r() : sceneEl.addEventListener('loaded', r));
+sceneReady.then(() => fill(65));
+Promise.race([Promise.all([sceneReady, loadShipModel()]), wait(7000)]).then(async () => {
+  await sceneReady; buildEnvironment(); applyScene('arrival'); refreshClickables();
+  fill(100); startBtn.disabled = false; startBtn.textContent = 'ENTER STATION';
+});
+startBtn.addEventListener('click', async () => {
+  Sfx.init(); Sfx.tension(.12); Sfx.click(); $('#boot').classList.add('hide');
+  Game.started = true; Game.t0 = performance.now(); dolly('0 0 6', '0 0 1', 2600); Sfx.whoosh();
+  logLine('Docking complete. Welcome, Commander.'); await wait(600);
+  logLine('Reactor core reporting critical instability.', 'warn'); await wait(500);
+  logLine('Objective: reach the reactor control room.');
+  await wait(1600); Game.busy = false; refreshClickables();
+});
+</script>
+</body>
+</html>
