@@ -2217,7 +2217,7 @@ function resetMissionV2() {
 
 /* ---------- v2 UI wiring: callsign, suit colour, difficulty, view ---------- */
 function syncV2UI() {
-  $('#bootName').value = Settings.name || 'KIAN'; $('#bootDiff').value = Settings.difficulty; $('#optDiff').value = Settings.difficulty; $('#optView').value = Settings.view;
+  $('#bootName').value = Settings.name || 'KAI'; $('#bootDiff').value = Settings.difficulty; $('#optDiff').value = Settings.difficulty; $('#optView').value = Settings.view;
   document.querySelectorAll('#bootSuit button').forEach(b => b.classList.toggle('on', b.dataset.c === Settings.suit));
 }
 document.querySelectorAll('#bootSuit button').forEach(b => { b.style.background = b.dataset.c; b.addEventListener('click', () => { Settings.suit = b.dataset.c; saveSettings(); syncV2UI(); heroC().setColor(Settings.suit); }); });
