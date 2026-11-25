@@ -121,6 +121,31 @@
   body.force-pad #pad { display:grid; }
   @media (pointer:coarse) { #pad { display:grid; bottom:104px; } }
   @media (max-width:700px) { #minimap { display:none !important; } #caption { bottom:150px; } #menu .cols { grid-template-columns:1fr; } }
+
+  /* ---------- v2: hero, missions ---------- */
+  #hurt { position:fixed; inset:0; z-index:13; pointer-events:none; opacity:0; transition:opacity .25s; background:radial-gradient(ellipse at center, transparent 35%, #ff1a3acc 100%); }
+  #hpBar { height:100%; width:100%; background:var(--gn); transition:width .25s, background .3s; }
+  #subtask { margin-top:9px; min-height:12px; font-size:9px; letter-spacing:1.2px; line-height:1.5; color:#ffd24a; }
+  #prompt { position:fixed; z-index:21; left:50%; bottom:22px; transform:translateX(-50%); padding:9px 18px; background:#06101fee; border:1px solid var(--cy); color:#fff; font-size:11px; letter-spacing:2.4px; opacity:0; transition:opacity .15s; pointer-events:none; }
+  #prompt.on { opacity:1; }
+  #hack { position:fixed; z-index:40; right:20px; top:calc(50% - 30px); transform:translateY(-50%); display:none; width:min(260px,90vw); padding:16px; text-align:center; }
+  #hack.on { display:block; } #hack.bad { border-color:var(--rd); box-shadow:0 0 30px #ff2a4866; }
+  #hack canvas { width:170px; height:170px; display:block; margin:8px auto; }
+  #hackTitle { font-size:11px; letter-spacing:3px; color:var(--cy); } #hackSub { font-size:8px; letter-spacing:1.4px; line-height:1.6; color:#a8b6d6; }
+  #hack .btn { margin:8px 0 0; padding:11px 18px; font-size:10px; }
+  #keypad { position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center; background:#02040bc0; }
+  #keypad.open { display:flex; }
+  #keypad .box { width:min(290px,92vw); padding:18px; text-align:center; }
+  #kpDisp { margin:12px 0; padding:12px; background:#030a16; border:1px solid var(--bd); font-size:24px; letter-spacing:8px; color:#8affc2; } #kpDisp.bad { color:var(--rd); border-color:var(--rd); }
+  #keypad .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  #keypad .grid button { padding:13px 0; font:inherit; font-size:15px; background:#0a1530; color:var(--tx); border:1px solid var(--bd); cursor:pointer; } #keypad .grid button:hover { border-color:var(--cy); background:#0f2a4a; }
+  #keypad small { display:block; margin-top:10px; font-size:8px; letter-spacing:1.5px; color:var(--mut); line-height:1.6; }
+  .setup { display:grid; gap:8px; margin:6px 0 14px; text-align:left; }
+  .setup label { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:9px; letter-spacing:2px; color:var(--mut); }
+  .setup input, .setup select { background:#0a1530; color:var(--tx); border:1px solid var(--bd); padding:7px 9px; font:inherit; font-size:11px; letter-spacing:1.5px; width:150px; text-transform:uppercase; }
+  .swatches { display:flex; gap:8px; justify-content:center; margin-top:2px; }
+  .swatches button { width:26px; height:26px; border-radius:50%; border:2px solid transparent; cursor:pointer; } .swatches button.on { border-color:#fff; box-shadow:0 0 10px currentColor; }
+  #end .stats { flex-wrap:wrap; }
 </style>
 
 <script>
@@ -137,7 +162,7 @@ const Game = {
   muted: false, t0: 0,
   stability: 0.12, targetStability: 0.12, coreColor: new THREE.Color('#ff3b55')
 };
-const Settings = { volume: .55, voice: false, challenge: false, quality: 'high', minimap: true };
+const Settings = { volume: .55, voice: false, challenge: false, quality: 'high', minimap: true, difficulty: 'normal', view: 'third', suit: '#57dcff', name: 'KAI' };
 const STABILITY_BY_NODES = [0.12, 0.41, 0.70, 1.0];
 const STOPS = [[0, '#ff3b55'], [0.41, '#ffab2e'], [0.7, '#38dfff'], [1, '#39ff98']].map(([s, c]) => [s, new THREE.Color(c)]);
 function stabilityColor(s, out) {
@@ -192,7 +217,10 @@ const Sfx = {
   whoosh() { this.noise(1.1, .22, 300, 2600); },
   activate(n) { [523.25, 659.25, 783.99, 1046.5].slice(0, n + 1).forEach((f, i) => this.tone(f, .5, 'triangle', .1, 0, i * .09)); this.tone(110 * n, .9, 'sine', .18, 40); },
   stable() { [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => this.tone(f, 1.1, 'sine', .1, 0, i * .12)); this.noise(1.6, .15, 400, 3200); },
-  launch() { this.noise(3.4, .35, 120, 5200); this.tone(70, 3.4, 'sawtooth', .12, 600); }
+  launch() { this.noise(3.4, .35, 120, 5200); this.tone(70, 3.4, 'sawtooth', .12, 600); },
+  hit() { this.noise(.35, .28, 1800, 120); this.tone(150, .3, 'square', .09, -90); },
+  boom() { this.noise(.7, .3, 400, 40); this.tone(60, .6, 'sine', .22, -30); },
+  pad(i) { this.tone([392, 523, 659, 784][i % 4], .28, 'triangle', .13); }
 };
 
 /* ---------- Glow texture (shared) ---------- */
@@ -477,6 +505,95 @@ AFRAME.registerComponent('vr-move', {
   }
 });
 
+/* ---------- V2: colliders (world-space circles per scene) ---------- */
+const COLLIDERS = {
+  arrival: [[-3, -5.5, 1.0], [2.6, -6.2, .5], [-6.8, -2.5, .55], [6.8, -3.5, .55], [-7.5, -12.8, .55], [7.6, -11.5, .55]],
+  reactor: [[0, -10, 2.7], [-4.2, -7.2, .55], [4.2, -9.3, .55], [-3.9, -13.2, .55], [-7.5, -10, .35], [7.5, -10, .35]],
+  bridge: [[0, -6.4, 1.1], [-6.2, -9, 1.4], [6.2, -9, 1.4]],
+  biodome: [[0, -10, 1.8], [-6.4, -6.8, .95], [6.6, -6.8, .95], [5.4, -10, 1.0], [-5.4, -10, 1.0], [2.7, -5.3, 1.0], [-2.7, -5.3, 1.0]],
+  dock: [[4.6, -13, 1.4], [-8.4, -10.5, .6]]
+};
+
+/* ---------- V2: procedural astronaut hero ---------- */
+AFRAME.registerComponent('astronaut', {
+  init() {
+    const T = THREE, g = this.g = new T.Group(); this.el.object3D.add(g);
+    const M = (c, o = {}) => new T.MeshStandardMaterial(Object.assign({ color: c, roughness: .5, metalness: .25 }, o));
+    this.suitCol = Settings.suit || '#57dcff';
+    this.suit = M('#e4ecf8'); this.dark = M('#1b2740', { metalness: .7, roughness: .35 });
+    this.trim = M('#101a2c', { emissive: new T.Color(this.suitCol), emissiveIntensity: 1.1 });
+    this.visor = M('#06101f', { emissive: new T.Color('#2fb8ff'), emissiveIntensity: .5, metalness: .9, roughness: .08 });
+    const mesh = (geo, mat, x, y, z, p) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); (p || g).add(m); return m; };
+    const pivot = (x, y, z) => { const p = new T.Group(); p.position.set(x, y, z); g.add(p); return p; };
+    mesh(new T.CapsuleGeometry(.2, .34, 6, 14), this.suit, 0, 1.08, 0);
+    mesh(new T.BoxGeometry(.22, .12, .02), this.trim, 0, 1.14, .2);
+    mesh(new T.CylinderGeometry(.21, .21, .07, 16), this.dark, 0, .84, 0);
+    this.head = pivot(0, 1.58, 0);
+    mesh(new T.SphereGeometry(.21, 20, 16), this.suit, 0, 0, 0, this.head);
+    mesh(new T.SphereGeometry(.16, 16, 12), this.visor, 0, .01, .1, this.head).scale.set(1.1, .85, .7);
+    mesh(new T.TorusGeometry(.2, .018, 8, 20), this.trim, 0, -.17, 0, this.head).rotation.x = Math.PI / 2;
+    mesh(new T.BoxGeometry(.34, .46, .17), this.dark, 0, 1.1, -.25);
+    [-.1, .1].forEach(x => mesh(new T.CylinderGeometry(.05, .065, .14, 10), this.trim, x, .82, -.25));
+    this.armL = pivot(-.3, 1.35, 0); this.armR = pivot(.3, 1.35, 0);
+    [this.armL, this.armR].forEach(a => { mesh(new T.CapsuleGeometry(.065, .26, 4, 10), this.suit, 0, -.19, 0, a); mesh(new T.SphereGeometry(.07, 10, 8), this.dark, 0, -.4, 0, a); });
+    this.legL = pivot(-.11, .78, 0); this.legR = pivot(.11, .78, 0);
+    [this.legL, this.legR].forEach(l => { mesh(new T.CapsuleGeometry(.08, .3, 4, 10), this.suit, 0, -.26, 0, l); mesh(new T.BoxGeometry(.15, .1, .24), this.dark, 0, -.5, .04, l); mesh(new T.BoxGeometry(.16, .025, .1), this.trim, 0, -.43, .1, l); });
+    const sh = mesh(new T.CircleGeometry(.42, 20), new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .35, depthWrite: false }), 0, .02, 0); sh.rotation.x = -Math.PI / 2;
+    this.cell = new T.Group(); this.cell.visible = false; g.add(this.cell); this.cell.position.set(0, 1.0, .42);
+    mesh(new T.OctahedronGeometry(.17), new T.MeshBasicMaterial({ color: 0x39ff98 }), 0, 0, 0, this.cell);
+    const gs = new T.Sprite(new T.SpriteMaterial({ map: glowTexture(), color: 0x39ff98, transparent: true, blending: T.AdditiveBlending, depthWrite: false })); gs.scale.set(.9, .9, 1); this.cell.add(gs);
+    this.tag = new T.Sprite(new T.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false })); this.tag.position.set(0, 2.1, 0); this.tag.scale.set(1.2, .3, 1); this.tag.renderOrder = 10; g.add(this.tag);
+    this.setName(Settings.name || 'KAI');
+    this.v = new T.Vector3(); this.speed = 0; this.phase = 0; this.actT = 0; this.cheerT = 0; this.flashT = 0; this.carry = false; this.first = true; this.yaw = Math.PI;
+  },
+  setName(n) {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 64; const x = c.getContext('2d');
+    x.fillStyle = 'rgba(6,14,30,.72)'; x.fillRect(0, 8, 256, 48); x.strokeStyle = this.suitCol; x.lineWidth = 2; x.strokeRect(1, 9, 254, 46);
+    x.fillStyle = '#fff'; x.font = 'bold 26px monospace'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(n).toUpperCase(), 128, 33);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; this.tag.material.map = t; this.tag.material.needsUpdate = true;
+  },
+  setColor(hex) { this.suitCol = hex; this.trim.emissive.set(hex); this.setName(Settings.name || 'KAI'); },
+  setCarry(b) { this.carry = b; this.cell.visible = b; },
+  act(ms = 700) { this.actT = ms; }, cheer(ms = 1500) { this.cheerT = ms; }, flash(ms = 260) { this.flashT = ms; this.trim.emissive.set('#ff2a48'); this.trim.emissiveIntensity = 2.5; },
+  tick(t, dt) {
+    const cam = this.el.sceneEl.querySelector('#player-camera'); if (!cam) return; dt = Math.min(dt, 100);
+    cam.object3D.getWorldPosition(this.v); const p = this.el.object3D.position, dx = this.v.x - p.x, dz = this.v.z - p.z, mv = Math.hypot(dx, dz);
+    if (this.first || mv > 2.5) { this.speed = 0; this.first = false; }
+    else { const sp = Math.min(7, mv / (dt / 1000 || 1)); this.speed += (sp - this.speed) * Math.min(1, dt / 90); if (mv > .004) { const ty = Math.atan2(dx, dz); let d = ty - this.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); this.yaw += d * Math.min(1, dt / 110); } }
+    p.set(this.v.x, 0, this.v.z); this.g.rotation.y = this.yaw;
+    this.phase += this.speed * dt / 1000 * 2.4; const amp = Math.min(1, this.speed / 1.6), s = Math.sin(this.phase);
+    this.legL.rotation.x = s * .85 * amp; this.legR.rotation.x = -s * .85 * amp;
+    let aL = -s * .7 * amp, aR = s * .7 * amp; const br = Math.sin(t / 700) * .03;
+    if (this.carry) { aL = aR = -.95; }
+    if (this.actT > 0) { this.actT -= dt; aR = -1.35 + Math.sin(t / 60) * .08; this.head.rotation.x = .12; } else this.head.rotation.x = 0;
+    let by = Math.abs(s) * .045 * amp + br;
+    if (this.cheerT > 0) { this.cheerT -= dt; aL = aR = -2.7 + Math.sin(t / 90) * .25; by += Math.abs(Math.sin(t / 130)) * .14; }
+    this.armL.rotation.x += (aL - this.armL.rotation.x) * Math.min(1, dt / 70); this.armR.rotation.x += (aR - this.armR.rotation.x) * Math.min(1, dt / 70);
+    this.g.position.y = by;
+    if (this.flashT > 0) { this.flashT -= dt; if (this.flashT <= 0) { this.trim.emissive.set(this.suitCol); this.trim.emissiveIntensity = 1.1; } }
+  }
+});
+
+/* ---------- V2: companion drone NOVA ---------- */
+AFRAME.registerComponent('companion', {
+  init() {
+    const T = THREE, g = this.g = new T.Group(); this.el.object3D.add(g);
+    g.add(new T.Mesh(new T.SphereGeometry(.15, 16, 12), new T.MeshStandardMaterial({ color: '#16213f', metalness: .9, roughness: .3 })));
+    const eye = new T.Mesh(new T.SphereGeometry(.06, 10, 8), new T.MeshBasicMaterial({ color: 0x57dcff })); eye.position.set(0, 0, .13); g.add(eye);
+    const ring = new T.Mesh(new T.TorusGeometry(.23, .013, 6, 26), new T.MeshBasicMaterial({ color: 0xa65cff })); ring.rotation.x = Math.PI / 2; g.add(ring); this.ring = ring;
+    const gs = new T.Sprite(new T.SpriteMaterial({ map: glowTexture(), color: 0x57dcff, transparent: true, blending: T.AdditiveBlending, depthWrite: false })); gs.scale.set(.9, .9, 1); g.add(gs);
+    this.pos = new T.Vector3(0, 2, 1);
+  },
+  tick(t, dt) {
+    const h = this.el.sceneEl.querySelector('#hero'); if (!h) return; dt = Math.min(dt, 100); const hp = h.object3D.position;
+    const tx = hp.x + Math.cos(t / 1800) * 1.0 + .5, ty = 2.05 + Math.sin(t / 600) * .12, tz = hp.z + Math.sin(t / 1800) * .8 + .2;
+    const k = Math.min(1, dt / 260); this.pos.x += (tx - this.pos.x) * k; this.pos.y += (ty - this.pos.y) * k; this.pos.z += (tz - this.pos.z) * k;
+    if (Math.hypot(this.pos.x - hp.x, this.pos.z - hp.z) > 6) this.pos.set(tx, ty, tz);
+    this.el.object3D.position.copy(this.pos); this.g.rotation.y = t / 500; this.ring.rotation.z = t / 300;
+  }
+});
+AFRAME.registerComponent('game-loop', { tick(t, dt) { if (window.gameTick) window.gameTick(t, dt); } });
+
 /* ---------- Small utilities ---------- */
 AFRAME.registerComponent('spin', {
   schema: { axis: { type: 'vec3', default: { x: 0, y: 1, z: 0 } }, speed: { default: 20 }, reactive: { default: false } },
@@ -489,7 +606,10 @@ AFRAME.registerComponent('billboard', {
 });
 AFRAME.registerComponent('bounds', {
   schema: { minX: { default: -9 }, maxX: { default: 9 }, minZ: { default: -14 }, maxZ: { default: 6 } },
-  tick() { if (this.el.sceneEl.is('vr-mode')) return; const p = this.el.object3D.position, d = this.data; p.x = clamp(p.x, d.minX, d.maxX); p.z = clamp(p.z, d.minZ, d.maxZ); }
+  tick() {
+    if (this.el.sceneEl.is('vr-mode')) return; const p = this.el.object3D.position, d = this.data, rp = this.el.parentNode.object3D.position; p.x = clamp(p.x, d.minX, d.maxX); p.z = clamp(p.z, d.minZ, d.maxZ);
+    const list = Game.started && COLLIDERS[Game.scene]; if (list) for (const c of list) { const dx = p.x + rp.x - c[0], dz = p.z + rp.z - c[1], m = c[2] + .45, dd = Math.hypot(dx, dz); if (dd < m && dd > 1e-4) { p.x += dx / dd * (m - dd); p.z += dz / dd * (m - dd); } }
+  }
 });
 AFRAME.registerComponent('interactive', {
   init() {
@@ -560,12 +680,13 @@ AFRAME.registerSystem('fx', {
   <div class="panel" id="objective">
     <div class="lbl">// OBJECTIVE</div>
     <div id="mission">ARRIVE AT THE STATION</div>
-    <div id="segs"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div id="segs"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <div class="meter"><span>CORE STABILITY</span><b id="stabVal">12%</b></div>
     <div class="bar"><div id="stabBar"></div></div>
+    <div class="meter" style="margin-top:10px"><span>SUIT INTEGRITY</span><b id="hpVal">100%</b></div><div class="bar"><div id="hpBar"></div></div>
     <div class="meter" style="margin-top:10px"><span>DATA CORES</span><b id="coreVal">0 / 5</b></div>
     <div class="meter" id="timerRow" style="display:none"><span>REACTOR MELTDOWN IN</span><b id="timerVal">4:00</b></div>
-    <div id="hint"></div>
+    <div id="subtask"></div><div id="hint"></div>
   </div>
 </div>
 <div id="log" class="panel"><div class="lbl">// STATION LOG</div><div id="logLines"></div></div>
@@ -593,16 +714,18 @@ AFRAME.registerSystem('fx', {
     <div class="cols">
       <section>
         <div class="lbl">// CONTROLS</div>
-        <p>WASD — move &nbsp;·&nbsp; DRAG — look around<br>CLICK — interact &nbsp;·&nbsp; 1–5 — jump to a zone<br>M — mute &nbsp;·&nbsp; H — this menu &nbsp;·&nbsp; P — screenshot<br>T — auto demo &nbsp;·&nbsp; ESC — close / stop demo<br>VR headset: laser pointer + thumbstick move</p>
+        <p>WASD — move &nbsp;·&nbsp; DRAG — look around<br>E / CLICK — interact &nbsp;·&nbsp; SPACE — hack sync<br>V — camera view &nbsp;·&nbsp; 1–5 — jump to an unlocked zone<br>M — mute &nbsp;·&nbsp; H — this menu &nbsp;·&nbsp; P — screenshot<br>T — auto demo &nbsp;·&nbsp; ESC — close / stop demo<br>VR headset: laser pointer + thumbstick move</p>
         <div class="lbl">// MISSION</div>
-        <p>Restore 3 power nodes, authorize the launch on the bridge, wake both crew pods in the Bio-Dome, then escape. Five gold DATA CORES are hidden across the zones — recover them for a rank bonus.</p>
+        <p>1) Scan 4 terminals and enter the airlock code. 2) Hack 3 power nodes while dodging plasma surges. 3) Repeat the security light sequence on the bridge pads. 4) Carry power cells past the drones to wake the crew. 5) Hold the charge ring under meteor fire to launch. Five gold DATA CORES give a rank bonus; every suit breach costs time.</p>
       </section>
       <section>
         <div class="lbl">// SETTINGS</div>
         <label>VOLUME <input type="range" id="optVol" min="0" max="100" step="5"></label>
         <label>STATION AI VOICE <input type="checkbox" id="optVoice"></label>
         <label>RADAR MINIMAP <input type="checkbox" id="optMini"></label>
-        <label>CHALLENGE MODE · 4:00 TIMER <input type="checkbox" id="optChal"></label>
+        <label>CHALLENGE MODE · TIMER <input type="checkbox" id="optChal"></label>
+        <label>DIFFICULTY <select id="optDiff"><option value="easy">EASY</option><option value="normal">NORMAL</option><option value="hard">HARD</option></select></label>
+        <label>CAMERA <select id="optView"><option value="third">THIRD-PERSON</option><option value="first">FIRST-PERSON</option></select></label>
         <label>GRAPHICS <select id="optQual"><option value="high">HIGH</option><option value="low">PERFORMANCE</option></select></label>
       </section>
     </div>
@@ -616,6 +739,13 @@ AFRAME.registerSystem('fx', {
   </div>
 </div>
 
+<div id="hurt"></div>
+<div id="prompt"></div>
+<div id="hack" class="panel"><div id="hackTitle">HACKING</div><canvas id="hackCanvas" width="200" height="200"></canvas><div id="hackSub"></div><button class="btn" id="hackBtn">SYNC [SPACE]</button></div>
+<div id="keypad"><div class="box panel"><div class="lbl">// NAV CONSOLE · AIRLOCK CODE</div><div id="kpDisp">_ _ _ _</div>
+  <div class="grid"><button data-d="1">1</button><button data-d="2">2</button><button data-d="3">3</button><button data-d="4">4</button><button data-d="5">5</button><button data-d="6">6</button><button data-d="7">7</button><button data-d="8">8</button><button data-d="9">9</button><button data-d="C">CLR</button><button data-d="0">0</button><button data-d="E">ENTER</button></div>
+  <small>ENTER THE 4 DIGITS FROM THE TERMINALS IN ORDER (1→4). A WRONG CODE SHOCKS YOUR SUIT.</small><button class="btn sm alt" id="kpClose" style="margin-top:10px">CANCEL</button></div></div>
+
 <div id="fade"></div><div id="flash"></div>
 
 <div id="boot">
@@ -623,21 +753,22 @@ AFRAME.registerSystem('fx', {
     <h1>CYBER CORE</h1><h2>ORBITAL REACTOR PROTOCOL</h2>
     <div class="loadbar"><i id="loadfill"></i></div>
     <button class="btn" id="startBtn" disabled>INITIALIZING…</button><button class="btn alt" id="bootDemoBtn" disabled>▶ AUTO DEMO</button>
-    <label class="chk"><input type="checkbox" id="bootChallenge"> CHALLENGE MODE — 4:00 REACTOR TIMER</label>
+    <div class="setup"><label>CALLSIGN <input id="bootName" maxlength="10" value="KAI" autocomplete="off"></label><label>DIFFICULTY <select id="bootDiff"><option value="easy">EASY</option><option value="normal">NORMAL</option><option value="hard">HARD</option></select></label><label>SUIT COLOUR <span class="swatches" id="bootSuit"><button data-c="#57dcff" aria-label="cyan"></button><button data-c="#ff7a3a" aria-label="orange"></button><button data-c="#39ff98" aria-label="green"></button><button data-c="#ff4fd8" aria-label="pink"></button><button data-c="#ffd24a" aria-label="gold"></button></span></label></div>
+    <label class="chk"><input type="checkbox" id="bootChallenge"> CHALLENGE MODE — REACTOR MELTDOWN TIMER</label>
     <small>WASD — move &nbsp;·&nbsp; DRAG — look around<br>CLICK — interact &nbsp;·&nbsp; 1–5 — zones &nbsp;·&nbsp; M — mute<br>H — menu &nbsp;·&nbsp; T — auto demo &nbsp;·&nbsp; P — screenshot</small>
   </div>
 </div>
 <div id="end">
   <div class="card">
     <h1 id="endTitle" style="color:var(--gn)">MISSION COMPLETE</h1><h2 id="endSub">REACTOR RESTORED · ESCAPE SUCCESSFUL</h2>
-    <div class="stats"><div>TIME<b id="statTime">0:00</b></div><div>OBJECTIVES<b id="statObj">6 / 6</b></div><div>DATA CORES<b id="statCores">0 / 5</b></div><div>RANK<b id="statRank">S</b></div></div>
+    <div class="stats"><div>TIME<b id="statTime">0:00</b></div><div>OBJECTIVES<b id="statObj">8 / 8</b></div><div>DATA CORES<b id="statCores">0 / 5</b></div><div>DOWNS<b id="statDeaths">0</b></div><div>RANK<b id="statRank">S</b></div></div>
     <div id="bestLine"></div>
     <button class="btn" id="replayBtn">REPLAY</button><button class="btn alt" id="stayBtn">KEEP EXPLORING</button>
   </div>
 </div>
 
 <!-- ============================ 3D WORLD ============================ -->
-<a-scene id="scene" background="color: #02040b" fog="type: exponential; color: #060d1c; density: 0.011"
+<a-scene id="scene" game-loop background="color: #02040b" fog="type: exponential; color: #060d1c; density: 0.011"
          renderer="antialias: true; highRefreshRate: true" vr-mode-ui="enabled: true" loading-screen="enabled: false"
          device-orientation-permission-ui="enabled: false">
 
@@ -947,6 +1078,9 @@ AFRAME.registerSystem('fx', {
     <a-entity light="type: point; color: #b65cff; intensity: 50; decay: 2" position="4 3 -13"></a-entity>
   </a-entity>
 
+  <a-entity id="hero" astronaut></a-entity>
+  <a-entity id="nova" companion></a-entity>
+
   <!-- persistent player rig -->
   <a-entity id="player-rig" position="0 0 5">
     <a-camera id="player-camera" position="0 1.6 0" bounds look-controls="pointerLockEnabled: false" wasd-controls="acceleration: 28"
@@ -981,10 +1115,10 @@ function setObjective(m, h) { mission.textContent = m; hint.textContent = h; }
 /* ---------- mission progress (6 objectives: 3 nodes + launch authorization + 2 crew pods) ---------- */
 const reactorOK = () => Game.nodes.size === 3;
 const dockOK = () => reactorOK() && Game.bridge && Game.pods.size === 2;
-const progress = () => Game.nodes.size + (Game.bridge ? 1 : 0) + Game.pods.size;
+const progress = () => Game.nodes.size + (Game.bridge ? 1 : 0) + Game.pods.size + (Game.airlock ? 1 : 0) + (Game.charged ? 1 : 0);
 const SCENES = [
   { id: 'arrival', name: 'ARRIVAL', ok: () => true },
-  { id: 'reactor', name: 'CYBER CORE', ok: () => true },
+  { id: 'reactor', name: 'CYBER CORE', ok: () => Game.airlock, lock: 'CYBER CORE LOCKED — SCAN THE 4 TERMINALS AND ENTER THE AIRLOCK CODE.' },
   { id: 'bridge', name: 'COMMAND BRIDGE', ok: reactorOK, lock: 'COMMAND BRIDGE LOCKED — STABILIZE THE REACTOR FIRST.' },
   { id: 'biodome', name: 'BIO-DOME', ok: reactorOK, lock: 'BIO-DOME LOCKED — STABILIZE THE REACTOR FIRST.' },
   { id: 'dock', name: 'ESCAPE DOCK', ok: dockOK, lock: 'ESCAPE DOCK LOCKED — AUTHORIZE THE LAUNCH ON THE BRIDGE AND WAKE BOTH CREW PODS.' }
@@ -999,18 +1133,16 @@ function tintAll(sel, hex, root = document) { root.querySelectorAll(sel).forEach
 function refreshHUD() {
   const n = Game.nodes.size, p = progress(), sc = Game.scene; [...segs].forEach((s, i) => s.classList.toggle('on', i < p));
   if (Game.launching || Game.done) return;
+  if (!Game.airlock) { setObjective(`CRACK THE AIRLOCK CODE (${Game.scanned.size}/4 DIGITS)`, 'WASD to move, drag to look. Walk up to a glowing terminal and press E to scan it, then enter the 4-digit code at the NAV CONSOLE.'); return; }
   if (!reactorOK()) {
-    if (sc === 'reactor') setObjective(`RESTORE POWER NODES (${n}/3)`, 'Click the glowing power nodes. Each one stabilizes the core.');
-    else setObjective('REACH THE REACTOR CONTROL ROOM', 'WASD to move, drag to look. Use the NAV CONSOLE or press 2 to enter the reactor.');
+    if (sc === 'reactor') setObjective(`HACK THE POWER NODES (${n}/3)`, 'Stand near a node, press E, then press SPACE when the needle is inside the green arc. Dodge the red surge lanes!');
+    else setObjective('ENTER THE REACTOR', 'Use the NAV CONSOLE or press 2 to enter the reactor.');
     return;
   }
-  if (dockOK()) { setObjective(sc === 'dock' ? 'ACTIVATE THE ESCAPE GATE' : 'ALL SYSTEMS READY — GO TO THE ESCAPE DOCK', sc === 'dock' ? 'Everything is ready. Click the gate to launch.' : 'Press 5 or use ESCAPE DOCK to launch.'); return; }
-  if (sc === 'bridge') setObjective(Game.bridge ? 'LAUNCH AUTHORIZED' : 'AUTHORIZE THE LAUNCH', Game.bridge ? 'Transferring to the Bio-Dome to wake the crew…' : 'Click the flashing console in front of the star map.');
-  else if (sc === 'biodome') setObjective(Game.pods.size === 2 ? 'CREW AWAKE' : `WAKE THE CREW PODS (${Game.pods.size}/2)`, Game.pods.size === 2 ? 'Now authorize the launch on the Command Bridge (press 3).' : 'Click each glowing cryo pod to wake its crew member.');
-  else {
-    const left = []; if (!Game.bridge) left.push('authorize the launch on the COMMAND BRIDGE (3)'); if (Game.pods.size < 2) left.push(`wake the crew in the BIO-DOME (4) — ${Game.pods.size}/2`);
-    setObjective('REACTOR STABLE — PREPARE TO ESCAPE', 'Remaining: ' + left.join(', then ') + '.');
-  }
+  if (dockOK()) { setObjective(Game.charged ? 'GATE CHARGED' : sc === 'dock' ? 'HOLD THE LINE — CHARGE THE GATE' : 'ALL SYSTEMS READY — GO TO THE ESCAPE DOCK', sc === 'dock' ? 'Stand inside the cyan ring to charge the gate. Dodge the falling meteors!' : 'Press 5 or use ESCAPE DOCK.'); return; }
+  if (sc === 'bridge') setObjective(Game.bridge ? 'LAUNCH AUTHORIZED' : 'CRACK THE SECURITY SEQUENCE', Game.bridge ? 'Transferring to the Bio-Dome…' : 'Press E at the console, watch the lights, then repeat them by stepping on the floor pads.');
+  else if (sc === 'biodome') setObjective(Game.pods.size === 2 ? 'CREW AWAKE' : `POWER THE CRYO PODS (${Game.pods.size}/2)`, Game.pods.size === 2 ? 'Now authorize the launch on the Command Bridge (press 3).' : 'Take a power cell (E), avoid the red drone rings, then insert it into a pod (E).');
+  else { const left = []; if (!Game.bridge) left.push('crack the security sequence on the COMMAND BRIDGE (3)'); if (Game.pods.size < 2) left.push(`power the crew pods in the BIO-DOME (4) — ${Game.pods.size}/2`); setObjective('REACTOR STABLE — PREPARE TO ESCAPE', 'Remaining: ' + left.join(', then ') + '.'); }
 }
 function refreshClickables() {
   document.querySelectorAll('.hit').forEach(h => {
@@ -1026,7 +1158,7 @@ function applyScene(name) {
   refreshNav();
   cam.object3D.position.set(0, 1.6, 0);
   const lc = cam.components['look-controls']; if (lc && lc.pitchObject) { lc.pitchObject.rotation.set(0, 0, 0); lc.yawObject.rotation.set(0, 0, 0); }
-  refreshHUD();
+  onSceneChange(name); refreshHUD();
 }
 function dolly(from, to, dur) {
   rig.removeAttribute('animation__dolly'); rig.setAttribute('position', from);
@@ -1228,12 +1360,11 @@ function activateNode(el, force) {
   }
   refreshHUD();
 }
-document.querySelectorAll('.power-node').forEach(n => n.addEventListener('click', () => activateNode(n)));
-$('#arrival-console').addEventListener('click', () => { if (!Game.busy && !Game.demo && Game.scene === 'arrival') { Sfx.click(); goTo('reactor'); } });
+document.querySelectorAll('.power-node').forEach(n => n.addEventListener('click', () => startHack(n)));
 
 /* ---------- launch sequence ---------- */
 async function launch(force) {
-  if (Game.busy || Game.launching || Game.done || Game.over || Game.scene !== 'dock' || !dockOK() || (Game.demo && !force)) return;
+  if (Game.busy || Game.launching || Game.done || Game.over || Game.scene !== 'dock' || !dockOK() || !Game.charged || (Game.demo && !force)) return;
   const wasDemo = Game.demo; Game.launching = true; Game.busy = true; refreshClickables(); Sfx.click(); Sfx.launch();
   const ship = $('#escape-ship');
   $('#vortex').setAttribute('vortex', 'boost', 1);
@@ -1258,7 +1389,6 @@ async function launch(force) {
   setObjective('MISSION COMPLETE', 'ORBITAL REACTOR PROTOCOL COMPLETE. You restored the core, woke the crew and escaped.');
   $('#end').classList.add('show'); logLine('Escape successful. Protocol complete.', 'ok');
 }
-$('#escape-portal').addEventListener('click', () => launch());
 
 /* ---------- command bridge: authorize launch ---------- */
 async function autoAdvance(from, to, delay = 2600) {
@@ -1283,7 +1413,6 @@ function authorizeLaunch(force) {
   if (dockOK()) { checkDockUnlock(); autoAdvance('bridge', 'dock'); } else { notify('LAUNCH AUTHORIZED — PROCEEDING TO THE BIO-DOME…'); autoAdvance('bridge', 'biodome'); }
   refreshNav(); refreshHUD();
 }
-$('#bridge-console').addEventListener('click', () => authorizeLaunch());
 
 /* ---------- bio-dome: wake the crew ---------- */
 const CREW = { 1: 'Engineer Kai', 2: 'Dr. Maya' };
@@ -1303,9 +1432,10 @@ function wakePod(el, force) {
   else notify(`${CREW[id].toUpperCase()} AWAKE — 1 CREW POD REMAINING.`);
   refreshNav(); refreshHUD();
 }
-document.querySelectorAll('.crew-pod').forEach(p => p.addEventListener('click', () => wakePod(p)));
+document.querySelectorAll('.crew-pod').forEach(p => p.addEventListener('click', () => insertCell(p)));
 
-function resetMission() {
+function resetMission() { resetMissionBase(); resetMissionV2(); }
+function resetMissionBase() {
   Game.nodes.clear(); Game.targetStability = Game.stability = .12; Game.launching = false; Game.done = false;
   document.querySelectorAll('.power-node').forEach(n => { setTint(n, '#6378ff'); const id = n.dataset.node; $('#nodeState' + id).setAttribute('value', 'OFFLINE'); $('#nodeState' + id).setAttribute('color', '#ff8a9a'); $('#beam' + id).setAttribute('energy-beam', 'on', false); });
   const cs = $('#core-status'); cs.setAttribute('value', '!! CORE UNSTABLE !!'); cs.setAttribute('color', '#ff6b80');
@@ -1366,7 +1496,7 @@ function buildEnvironment() {
    settings · station-AI captions + voice · data cores · challenge mode ·
    radar minimap · auto demo · system menu · VR panel · touch pad · scene extras
    ===================================================================== */
-const CHALLENGE_MS = 240000, SETTINGS_KEY = 'cybercore.settings.v1', BEST_KEY = 'cybercore.best.v1';
+const SETTINGS_KEY = 'cybercore.settings.v1', BEST_KEY = 'cybercore.best.v1';
 const fmtTime = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 
 /* ---------- settings (saved in localStorage, always wrapped in try/catch) ---------- */
@@ -1375,7 +1505,7 @@ function saveSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringif
 function loadBest() { try { return JSON.parse(localStorage.getItem(BEST_KEY) || 'null'); } catch (e) { return null; } }
 function syncSettingsUI() {
   $('#optVol').value = Math.round(Settings.volume * 100); $('#optVoice').checked = !!Settings.voice; $('#optMini').checked = !!Settings.minimap;
-  $('#optChal').checked = !!Settings.challenge; $('#bootChallenge').checked = !!Settings.challenge; $('#optQual').value = Settings.quality;
+  $('#optChal').checked = !!Settings.challenge; $('#bootChallenge').checked = !!Settings.challenge; $('#optQual').value = Settings.quality; syncV2UI();
 }
 function applyQuality() {
   try { const r = sceneEl.renderer; if (!r) return; r.setPixelRatio(Settings.quality === 'low' ? 1 : Math.min(window.devicePixelRatio || 1, 2)); if (sceneEl.resize) sceneEl.resize(); } catch (e) {}
@@ -1390,13 +1520,12 @@ function say(text) {
 function caption(text, ms = 4200) { capEl.textContent = text; capEl.classList.add('show'); clearTimeout(capTimer); capTimer = setTimeout(() => capEl.classList.remove('show'), ms); say(text); }
 const aiSay = (text, ms) => { if (text && !Game.demo) caption(text, ms); };
 function aiLine(name) {
-  const rl = Game.nodes.size < 3;
   return {
-    arrival: 'Arrival platform secured. Use the navigation console to enter the reactor.',
-    reactor: rl ? 'Warning. Core instability detected. Restore all three power nodes.' : 'Reactor is stable. Standing by.',
-    bridge: Game.bridge ? 'Launch already authorized.' : 'Command bridge online. Authorize the launch at the console.',
-    biodome: Game.pods.size === 2 ? 'Crew awake and safe.' : 'Bio-Dome. Two crew members are still in cryo sleep. Wake them.',
-    dock: 'Escape dock ready. Activate the gate to launch.'
+    arrival: Game.airlock ? 'Airlock open. Proceed to the reactor.' : 'Arrival platform. The airlock is sealed. Scan the four terminals, then enter the code at the console.',
+    reactor: Game.nodes.size < 3 ? 'Warning. Core unstable. Hack all three power nodes and dodge the plasma surges.' : 'Reactor is stable. Standing by.',
+    bridge: Game.bridge ? 'Launch already authorized.' : 'Bridge security lock engaged. Start the sequence at the console, then repeat the pattern on the floor pads.',
+    biodome: Game.pods.size === 2 ? 'Crew awake and safe.' : 'Bio-Dome. The pods have no power. Carry power cells to them and avoid the security drones.',
+    dock: Game.charged ? 'Gate charged.' : 'Escape dock. Stand in the ring to charge the gate. Watch for meteors.'
   }[name];
 }
 
@@ -1434,10 +1563,10 @@ sceneEl.addEventListener('click', e => { const c = e.target && e.target.closest 
 
 /* ---------- end-of-mission stats, personal best, failure ---------- */
 function finishStats(sec, wasDemo) {
-  const cores = Game.cores.size, eff = sec - cores * 10, rank = eff < 150 ? 'S' : eff < 240 ? 'A' : eff < 360 ? 'B' : 'C';
+  const cores = Game.cores.size, eff = sec - cores * 10 + Game.deaths * 20, rank = eff < 330 ? 'S' : eff < 450 ? 'A' : eff < 600 ? 'B' : 'C';
   const t = $('#endTitle'); t.textContent = wasDemo ? 'DEMO COMPLETE' : 'MISSION COMPLETE'; t.style.color = 'var(--gn)';
   $('#endSub').textContent = 'REACTOR RESTORED · CREW SAVED · ESCAPE SUCCESSFUL'; $('#stayBtn').style.display = '';
-  $('#statRank').textContent = rank; $('#statRank').style.color = ''; $('#statCores').textContent = cores + ' / 5'; $('#statObj').textContent = '6 / 6';
+  $('#statRank').textContent = rank; $('#statRank').style.color = ''; $('#statCores').textContent = cores + ' / 5'; $('#statObj').textContent = '8 / 8'; $('#statDeaths').textContent = Game.deaths;
   let line = '';
   if (!wasDemo) {
     const best = loadBest();
@@ -1451,7 +1580,7 @@ function failMission() {
   Game.over = true; Game.busy = true; refreshClickables(); Sfx.fail();
   const t = $('#endTitle'); t.textContent = 'MISSION FAILED'; t.style.color = 'var(--rd)';
   $('#endSub').textContent = 'REACTOR MELTDOWN · TIME EXPIRED'; $('#stayBtn').style.display = 'none';
-  $('#statTime').textContent = fmtTime(CHALLENGE_MS / 1000); $('#statObj').textContent = progress() + ' / 6'; $('#statCores').textContent = Game.cores.size + ' / 5';
+  $('#statTime').textContent = fmtTime(Math.round(chalMs() / 1000)); $('#statDeaths').textContent = Game.deaths; $('#statObj').textContent = progress() + ' / 8'; $('#statCores').textContent = Game.cores.size + ' / 5';
   const r = $('#statRank'); r.textContent = 'F'; r.style.color = 'var(--rd)'; $('#bestLine').textContent = '';
   const f = $('#flash'); f.style.background = '#ff2a48'; f.classList.add('on'); setTimeout(() => { f.classList.remove('on'); f.style.background = ''; }, 250);
   caption('Reactor breach. Mission failed. Restart and try again.', 6000);
@@ -1471,11 +1600,15 @@ const miniEl = $('#minimap'), mini = $('#miniCanvas'), mctx = mini.getContext('2
 const MAP = { x0: -12, x1: 12, z0: -20, z1: 8 };
 function mapPOIs() {
   const sc = Game.scene, out = [];
-  if (sc === 'arrival') out.push({ x: -3, z: -5.5, c: '#57dcff', done: false }, { x: 2.6, z: -6.2, c: '#a65cff', done: false });
+  if (sc === 'arrival') { TERM.forEach(([x, z], i) => out.push({ x, z, c: '#ffb02e', done: Game.scanned.has(i) })); out.push({ x: -3, z: -5.5, c: '#57dcff', done: Game.airlock }); }
   if (sc === 'reactor') NODE_POS.forEach((p, i) => out.push({ x: p[0], z: p[2], c: '#6378ff', done: Game.nodes.has(String(i + 1)) }));
-  if (sc === 'bridge') out.push({ x: 0, z: -6.4, c: '#ff3b55', done: Game.bridge });
-  if (sc === 'biodome') out.push({ x: -6.4, z: -6.8, c: '#5b9bff', done: Game.pods.has('1') }, { x: 6.6, z: -6.8, c: '#5b9bff', done: Game.pods.has('2') });
-  if (sc === 'dock') out.push({ x: 0, z: -9.5, c: '#a65cff', done: Game.done });
+  if (sc === 'bridge') { PADX.forEach((x, i) => out.push({ x, z: PADZ, c: PADC[i], done: false })); out.push({ x: 0, z: -6.4, c: '#ff3b55', done: Game.bridge }); }
+  if (sc === 'biodome') {
+    out.push({ x: -6.4, z: -6.8, c: '#5b9bff', done: Game.pods.has('1') }, { x: 6.6, z: -6.8, c: '#5b9bff', done: Game.pods.has('2') });
+    CELLP.forEach(([x, z], i) => { if (Game.carry !== i && !Game.delivered.has(i)) out.push({ x, z, c: '#39ff98', done: false }); });
+    if (Game.pods.size < 2) SDpos.forEach(p => out.push({ x: p.x, z: p.z, c: '#ff3b55', done: false }));
+  }
+  if (sc === 'dock') out.push({ x: 0, z: -7, c: '#57dcff', done: Game.charged }, { x: 0, z: -9.5, c: '#a65cff', done: Game.done });
   const cd = CORE_DEFS.find(d => d.id === sc); if (cd && !Game.cores.has(sc)) out.push({ x: cd.pos[0], z: cd.pos[2], c: '#ffd24a', done: false, core: true });
   return out;
 }
@@ -1512,7 +1645,7 @@ const alarmEl = $('#alarm'), timerRow = $('#timerRow'), timerVal = $('#timerVal'
   const chal = Settings.challenge && !Game.demo && Game.started;
   timerRow.style.display = chal ? 'flex' : 'none';
   if (chal && !Game.done && !Game.over && !Game.launching) {
-    const left = Math.max(0, CHALLENGE_MS - (now - Game.t0)), s = Math.ceil(left / 1000);
+    const left = Math.max(0, chalMs() - Game.penalty - (now - Game.t0)), s = Math.ceil(left / 1000);
     timerVal.textContent = fmtTime(s); timerRow.classList.toggle('low', s <= 30); if (left <= 0) failMission();
   }
   if (sceneEl.is('vr-mode') && now - lastVr > 400) { lastVr = now; updateVRHud(); }
@@ -1582,7 +1715,9 @@ function lookAtPoint(x, y, z, ms = 1200) {
     lc.yawObject.rotation.y = sy + d * e; lc.pitchObject.rotation.x = sx + (tx - sx) * e; if (k < 1) requestAnimationFrame(step);
   })(t0);
 }
-function stopDemo() { if (!Demo.on) return; Demo.on = false; Demo.token++; notify('DEMO STOPPED — YOU HAVE CONTROL'); }
+function stopDemo() {
+  if (!Demo.on) return; Demo.on = false; Demo.token++; Game.chargeMul = 1; cancelHack(); Simon.token++; Simon.active = false; Simon.input = false; closeKeypad(); notify('DEMO STOPPED — YOU HAVE CONTROL');
+}
 async function startDemo() {
   if (Demo.on) { stopDemo(); return; }
   const sb = $('#startBtn');
@@ -1592,47 +1727,54 @@ async function startDemo() {
   Demo.on = true; Game.demo = true; const tok = ++Demo.token; let finished = false;
   document.body.classList.add('demo'); $('#demoBtn').innerHTML = '■ STOP DEMO';
   const S = async ms => { await wait(ms); if (!Demo.on || tok !== Demo.token) throw STOP; };
-  const until = async (fn, max = 90000) => { const t0 = performance.now(); while (!fn()) { await S(120); if (performance.now() - t0 > max) throw new Error('demo timeout'); } };
+  const until = async (fn, max = 120000) => { const t0 = performance.now(); while (!fn()) { await S(120); if (performance.now() - t0 > max) throw new Error('demo timeout'); } };
   const arrived = sc => until(() => Game.scene === sc && !Game.busy);
+  const walk = async (x, z, speed = 3.6) => {
+    const rp = rig.object3D.position, tx = x - rp.x, tz = z - rp.z, p = cam.object3D.position, sx = p.x, sz = p.z, dist = Math.hypot(tx - sx, tz - sz);
+    if (dist < .05) return; lookAtPoint(x, 1.5, z, 450); await S(300);
+    const ms = dist / speed * 1000, t0 = performance.now();
+    for (;;) { const k = Math.min(1, (performance.now() - t0) / ms); p.x = sx + (tx - sx) * k; p.z = sz + (tz - sz) * k; if (k >= 1) break; await S(16); }
+  };
   try {
     while (Game.busy) await S(100);
     Game.busy = true; refreshClickables(); $('#fade').classList.add('on'); await S(550);
-    resetMission(); applyScene('arrival'); dolly('0 0 5', '0 0 1', 1900); Game.t0 = performance.now(); $('#fade').classList.remove('on'); await S(800); Game.busy = false; refreshClickables();
-    caption('CYBER CORE — a five-scene interactive A-Frame mission. This is the automatic demo.', 5200); await S(5400);
-    caption('Scene 1: Orbital Arrival — procedural nebula sky, GPU starfield, a holographic floor and a docked ship.', 5600);
-    lookAtPoint(4.8, 1.8, -9, 1800); await S(2800); lookAtPoint(0, 2, -12, 1800); await S(2800);
+    resetMission(); applyScene('arrival'); dolly('0 0 5', '0 0 1', 1900); Game.t0 = performance.now(); $('#fade').classList.remove('on'); await S(2200); Game.busy = false; refreshClickables();
+    caption(`CYBER CORE — meet ${Settings.name || 'KAI'}, the astronaut. Five zones, five different mission types. This is the automatic demo.`, 6000); await S(6200);
+    caption('Mission 1: the airlock is sealed. Four terminals hold the four digits of the access code.', 5200);
+    await walk(-5.4, -3.2); lookAtPoint(-6.8, 1.3, -2.5, 500); await S(500); scanTerminal(0, true); await S(1600);
     const c0 = document.querySelector('.data-core[data-core="arrival"]');
-    if (c0) { caption('Hidden gold DATA CORES reward exploration with a rank bonus.', 4200); lookAtPoint(-7.8, 1.3, -9.5, 1600); await S(2300); collectCore(c0, true); await S(1600); }
-    caption('Select the navigation console to enter the reactor.', 3600); lookAtPoint(-3, 1.5, -5.5, 1400); await S(2400);
-    goTo('reactor', true); await arrived('reactor');
-    caption('Scene 2: the Cyber Core. The reactor is unstable — red, shaking, stability at 12%. Restore three power nodes.', 6400);
-    lookAtPoint(0, 2.7, -10, 1800); await S(4600);
+    if (c0) { caption('Hidden gold DATA CORES reward exploration with a rank bonus.', 3800); await walk(-6.6, -9.2); collectCore(c0, true); await S(1200); }
+    await walk(-6.0, -11.6); scanTerminal(2, true); await S(1500);
+    await walk(6.2, -10.8, 4.2); scanTerminal(3, true); await S(1500);
+    await walk(5.4, -4.2, 4.2); scanTerminal(1, true); await S(1500);
+    caption('All four digits found. Back to the navigation console to enter the code.', 4200);
+    await walk(-3, -3.8, 4.2); lookAtPoint(-3, 1.4, -5.5, 500); await S(900); onConsoleClick(true);
+    await arrived('reactor');
+    caption('Mission 2: the Cyber Core. Each power node must be hacked — sync the needle with the green arc while dodging plasma surges.', 7000);
+    const stand = [[-3.6, -5.2], [4.6, -6.9], [-4.8, -11.0]];
     for (let i = 1; i <= 3; i++) {
-      const p = NODE_POS[i - 1]; lookAtPoint(p[0], p[1], p[2], 1400); caption(`Activating power node 0${i}…`, 2600); await S(1700);
-      activateNode($('#node' + i), true); await S(i < 3 ? 2600 : 700);
+      await walk(stand[i - 1][0], stand[i - 1][1]); lookAtPoint(NODE_POS[i - 1][0], NODE_POS[i - 1][1], NODE_POS[i - 1][2], 500); await S(500);
+      caption(`Hacking power node 0${i}…`, 3000); startHack($('#node' + i), true); await until(() => Game.nodes.has(String(i)), 60000); await S(i < 3 ? 1800 : 700);
     }
-    lookAtPoint(0, 2.7, -10, 1400); caption('Stability 100% — the core turns green. Transferring to the Command Bridge.', 4600);
+    caption('Stability 100% — the core turns green. Transferring to the Command Bridge.', 4600);
     await arrived('bridge');
-    caption('Scene 3: the Command Bridge — a holographic star map, live consoles and ships passing outside. Authorize the launch.', 6000);
-    lookAtPoint(0, 3, -10, 1600); await S(3400); lookAtPoint(-14, 6, -40, 2200); await S(2800);
-    lookAtPoint(0, 1.4, -6.4, 1500); await S(1800); authorizeLaunch(true);
+    caption('Mission 3: the bridge security lock. Memorize the pattern of lights and repeat it on the floor pads.', 6000);
+    await walk(0, -2.2); lookAtPoint(0, 1, -4, 500); await S(900); startSimon(true); await until(() => Game.bridge, 120000);
     await arrived('biodome');
-    caption('Scene 4: the Bio-Dome — a glass geodesic dome, a bioluminescent tree of life and two crew in cryo sleep.', 6000);
-    lookAtPoint(0, 6.5, -10, 1800); await S(4000);
-    for (const id of [1, 2]) {
-      const p = id === 1 ? [-6.4, 1.4, -6.8] : [6.6, 1.4, -6.8]; lookAtPoint(p[0], p[1], p[2], 1500); caption(`Waking crew pod 0${id}…`, 2400); await S(1900);
-      wakePod($('#pod' + id), true); await S(id === 1 ? 2300 : 500);
-    }
+    caption('Mission 4: the Bio-Dome. The crew pods have no power. Carry power cells past the patrolling security drones.', 7000);
+    await walk(-7, -11.6); pickCell(0, true); await S(900); caption('Carrying a cell slows the astronaut. Stay out of the red sweep rings.', 4200);
+    await walk(-6.4, -5.0); insertCell($('#pod1'), true); await S(2000);
+    await walk(7.4, -11.6, 4.6); pickCell(1, true); await S(900);
+    await walk(6.6, -5.0, 4.2); insertCell($('#pod2'), true); await S(1500);
     caption('Crew awake. All systems ready — transferring to the Escape Dock.', 4200);
     await arrived('dock');
-    caption('Scene 5: the Escape Dock — landing pad, flashing beacons, departure board and the escape gate.', 5200);
-    lookAtPoint(0, 2.7, -9.5, 1600); await S(2800); lookAtPoint(4.6, 2, -13, 1600); await S(2400);
-    lookAtPoint(0, 2.7, -9.5, 1200); caption('Activating the escape gate…', 3000); await S(1500);
-    launch(true); await until(() => Game.done, 90000);
-    caption('Mission complete — time, rank and bonus data cores are scored.', 4200); await S(5200);
+    caption('Mission 5: hold the line. Stand inside the ring to charge the gate while meteors fall.', 6000);
+    await walk(0, -7); Game.chargeMul = 3; await until(() => Game.charged, 60000); Game.chargeMul = 1;
+    await until(() => Game.done, 90000);
+    caption('Mission complete — time, rank, downs and bonus data cores are scored.', 4200); await S(5200);
     finished = true;
   } catch (e) { if (e !== STOP) console.error(e); }
-  Demo.on = false; Game.demo = false; document.body.classList.remove('demo'); $('#demoBtn').innerHTML = '▶ AUTO DEMO'; capEl.classList.remove('show');
+  Demo.on = false; Game.demo = false; Game.chargeMul = 1; document.body.classList.remove('demo'); $('#demoBtn').innerHTML = '▶ AUTO DEMO'; capEl.classList.remove('show');
   if (finished) {
     Game.busy = true; $('#fade').classList.add('on'); await wait(500); $('#end').classList.remove('show'); resetMission(); applyScene('arrival'); dolly('0 0 5', '0 0 1', 1900);
     Game.t0 = performance.now(); $('#fade').classList.remove('on'); await wait(700); Game.busy = false; refreshClickables(); notify('DEMO FINISHED — THE MISSION IS RESET. NOW PLAY IT YOURSELF!');
@@ -1654,8 +1796,8 @@ async function startDemo() {
       <a-sphere position=".16 0 0" radius=".07" material="color: #57dcff; emissive: #57dcff; emissiveIntensity: 2"></a-sphere>
       <a-torus rotation="90 0 0" radius=".3" radius-tubular=".012" color="#57dcff" material="emissive: #57dcff; emissiveIntensity: 1.2"></a-torus>
       <a-entity glow="color: #57dcff; size: 1.2; opacity: .6"></a-entity></a-entity></a-entity>`;
-  const brief = ['I am the station AI. The reactor is failing — restore three power nodes in the Cyber Core.',
-    'When the core is stable, authorize the launch on the Command Bridge, then wake both crew pods in the Bio-Dome.',
+  const brief = ['I am the station AI. The airlock is sealed. Scan the four terminals around the platform and enter the code on the nav console.',
+    'Inside, hack three power nodes, crack the bridge security sequence, power the crew pods with cells, then charge the gate under meteor fire.',
     'Gold data cores are hidden in every zone. Recover all five for a rank bonus.',
     'Press H for controls and settings, or T to watch the automatic demo.'];
   let bi = 0;
@@ -1692,8 +1834,400 @@ async function startDemo() {
       <a-entity glow="color: #35c8ff; size: 4.5; opacity: .2" position="0 0 .2"></a-entity></a-entity>`);
 })();
 
+/* =====================================================================
+   V2 — PLAYABLE ASTRONAUT + HARD MISSIONS
+   code-lock scavenger hunt · node hacking + plasma surges · sequence-memory pads ·
+   stealth cell delivery past security drones · hold-the-line gate charge under meteors
+   ===================================================================== */
+const DIFF = {
+  easy:   { dmg: .6,  regen: 6,   surge: [4200, 1200], met: [3400, 1700], drone: .8,  hack: [.55, .85], simon: [3, 3, 4], charge: 22, chal: 600000 },
+  normal: { dmg: 1,   regen: 4,   surge: [3200, 950],  met: [2500, 1350], drone: 1,   hack: [.42, 1.1], simon: [3, 4, 5], charge: 28, chal: 480000 },
+  hard:   { dmg: 1.4, regen: 2.5, surge: [2300, 720],  met: [1800, 1050], drone: 1.3, hack: [.32, 1.4], simon: [4, 5, 6], charge: 34, chal: 390000 }
+};
+function D() { return DIFF[Settings.difficulty] || DIFF.normal; }
+function chalMs() { return D().chal; }
+Object.assign(Game, { airlock: false, code: [1, 2, 3, 4], scanned: new Set(), charge: 0, charged: false, hp: 100, deaths: 0, hack: null, carry: null, delivered: new Set(), downed: false, lastHit: 0, iframe: 0, penalty: 0, chargeMul: 1 });
+const hero = $('#hero'), nova = $('#nova');
+const H = { x: 0, z: 1 }, _hw = new THREE.Vector3();
+const heroC = () => hero.components.astronaut || { flash() {}, act() {}, setCarry() {}, cheer() {}, setColor() {}, setName() {} };
+const near = (x, z, r) => Math.hypot(H.x - x, H.z - z) <= r;
+const angd = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+function reach(x, z, r, force, label) { if (force || near(x, z, r)) return true; Sfx.deny(); caption(`MOVE CLOSER TO ${label}.`, 1800); return false; }
+function genCode() { Game.code = [0, 0, 0, 0].map(() => 1 + Math.floor(Math.random() * 9)); }
+genCode();
+const hurtEl = $('#hurt'), hpBar = $('#hpBar'), hpVal = $('#hpVal'), subEl = $('#subtask'), promptEl = $('#prompt');
+function setSub(t) { if (subEl.textContent !== t) subEl.textContent = t; }
+const sceneObj = id => $('#scene-' + id).object3D;
+
+/* ---------- health, damage, respawn ---------- */
+function hurt(a, why) {
+  const now = performance.now();
+  if (Game.demo || Game.busy || Game.done || Game.over || Game.downed || now < Game.iframe) return;
+  Game.iframe = now + 450; Game.lastHit = now; Game.hp = Math.max(0, Game.hp - a * D().dmg);
+  Sfx.hit(); hurtEl.style.opacity = 1; setTimeout(() => hurtEl.style.opacity = 0, 240); heroC().flash(260);
+  notify(`⚠ ${why} — SUIT ${Math.round(Game.hp)}%`);
+  if (Game.hp <= 0) downed();
+}
+async function downed() {
+  Game.downed = true; Game.deaths++; cancelHack(); dropCell(); Game.busy = true; refreshClickables(); Sfx.fail(); notify('SUIT BREACH — REBOOTING SYSTEMS');
+  if (Settings.challenge) Game.penalty += 15000;
+  $('#fade').classList.add('on'); await wait(700);
+  cam.object3D.position.set(0, 1.6, 0); Game.hp = 60; Game.lastHit = performance.now(); Game.iframe = performance.now() + 1500; clearHazards();
+  $('#fade').classList.remove('on'); await wait(400); Game.downed = false; if (!Game.over) Game.busy = false; refreshClickables();
+}
+
+/* ---------- 1 · ARRIVAL: scavenger hunt + keypad ---------- */
+const TERM = [[-6.8, -2.5], [6.8, -3.5], [-7.5, -12.8], [7.6, -11.5]];
+$('#scene-arrival').insertAdjacentHTML('beforeend', TERM.map(([x, z], i) => {
+  const ry = Math.round(Math.atan2(x, 7 + z) * 180 / Math.PI);
+  return `<a-entity class="terminal" id="term${i + 1}" data-i="${i}" interactive position="${x} 0 ${z}" rotation="0 ${ry} 0">
+    <a-box position="0 .55 0" width=".95" height="1.1" depth=".5" color="#0f1a35" material="metalness: .9; roughness: .3"></a-box>
+    <a-box position="0 1.35 .02" width="1.1" height=".7" depth=".1" rotation="-12 0 0" color="#0b1428" material="metalness: .9; roughness: .3"></a-box>
+    <a-plane position="0 1.35 .08" width="1" height=".58" rotation="-12 0 0" color="#06223a" material="emissive: #ff9d3d; emissiveIntensity: .55"></a-plane>
+    <a-text value="TERMINAL 0${i + 1}" position="0 1.5 .13" rotation="-12 0 0" align="center" width="1.6" color="#ffe0b0"></a-text>
+    <a-text id="termState${i}" value="PRESS E TO SCAN" position="0 1.28 .13" rotation="-12 0 0" align="center" width="1.5" color="#ffb02e"></a-text>
+    <a-cylinder position="0 3 0" radius=".05" height="4" material="color: #ffb02e; emissive: #ffb02e; emissiveIntensity: 1.2; transparent: true; opacity: .3"></a-cylinder>
+    <a-entity position="0 1.4 0" glow="color: #ffb02e; size: 2.6; opacity: .45"></a-entity>
+    <a-sphere class="hit" position="0 1.2 0" radius="1.15" material="opacity: 0; transparent: true; depthWrite: false"></a-sphere></a-entity>`;
+}).join('') + `<a-text id="lock-state" value="AIRLOCK SEALED" position="-3 2.7 -5.5" align="center" width="3" color="#ff8a9a" billboard></a-text>`);
+document.querySelectorAll('.terminal').forEach(t => t.addEventListener('click', () => scanTerminal(+t.dataset.i)));
+function scanTerminal(i, force) {
+  if (Game.busy || Game.scene !== 'arrival' || (Game.demo && !force)) return;
+  if (Game.scanned.has(i)) { notify(`TERMINAL ${i + 1} — DIGIT ${i + 1} IS ${Game.code[i]}`); return; }
+  if (!reach(TERM[i][0], TERM[i][1], 3.2, force, 'THE TERMINAL')) return;
+  Game.scanned.add(i); Sfx.pickup(); heroC().act();
+  const st = $('#termState' + i); st.setAttribute('value', `DIGIT ${i + 1}:  ${Game.code[i]}`); st.setAttribute('color', '#8affc2');
+  fx().burst(new THREE.Vector3(TERM[i][0], 1.4, TERM[i][1]), 0xffb02e, 70); fx().ring(new THREE.Vector3(TERM[i][0], .05, TERM[i][1]), 0xffb02e);
+  logLine(`Terminal ${i + 1} scanned (${Game.scanned.size}/4).`, 'ok'); notify(`TERMINAL ${i + 1} SCANNED — DIGIT ${i + 1} IS ${Game.code[i]}`); refreshHUD();
+  if (Game.scanned.size === 4) caption('All four digits recovered. Return to the navigation console and enter the code.', 5000);
+}
+function onConsoleClick(force) {
+  if (Game.busy || Game.scene !== 'arrival' || (Game.demo && !force)) return;
+  if (Game.airlock) { Sfx.click(); goTo('reactor', !!force); return; }
+  if (!reach(-3, -5.5, 3.6, force, 'THE NAV CONSOLE')) return;
+  if (Game.scanned.size < 4) { Sfx.deny(); caption(`ACCESS CODE INCOMPLETE — ${Game.scanned.size}/4 TERMINALS SCANNED. FIND THE REST.`, 3800); return; }
+  if (Game.demo) { submitCode(Game.code.join(''), true); return; }
+  openKeypad();
+}
+$('#arrival-console').addEventListener('click', () => onConsoleClick());
+let kpBuf = ''; const kpEl = $('#keypad'), kpDisp = $('#kpDisp');
+function kpShow(t, bad) { kpDisp.textContent = t; kpDisp.classList.toggle('bad', !!bad); }
+function openKeypad() { kpBuf = ''; kpShow('_ _ _ _'); kpEl.classList.add('open'); Sfx.click(); }
+function closeKeypad() { kpEl.classList.remove('open'); }
+function kpUpdate() { kpShow(kpBuf ? kpBuf.split('').join(' ') : '_ _ _ _'); }
+function kpPress(d) {
+  if (d === 'C') kpBuf = ''; else if (d === 'E') { submitCode(kpBuf); return; } else if (kpBuf.length < 4) kpBuf += d;
+  Sfx.tone(700 + kpBuf.length * 90, .07, 'square', .05); kpUpdate();
+}
+kpEl.querySelectorAll('button[data-d]').forEach(b => b.addEventListener('click', () => kpPress(b.dataset.d)));
+$('#kpClose').addEventListener('click', closeKeypad);
+function submitCode(str, force) {
+  if (str === Game.code.join('')) { closeKeypad(); unlockAirlock(); return; }
+  Sfx.deny(); kpBuf = ''; kpShow('DENIED', true); setTimeout(() => { if (kpEl.classList.contains('open')) kpUpdate(); }, 900);
+  if (!force) hurt(8, 'ELECTRIC SHOCK');
+}
+function unlockAirlock() {
+  if (Game.airlock) return; Game.airlock = true; Sfx.stable(); heroC().cheer();
+  const l = $('#lock-state'); l.setAttribute('value', 'AIRLOCK OPEN'); l.setAttribute('color', '#8affc2');
+  fx().burst(new THREE.Vector3(-3, 1.4, -5.5), 0x39ff98, 170); fx().ring(new THREE.Vector3(-3, .05, -5.5), 0x39ff98);
+  logLine('Access code accepted. Reactor airlock open.', 'ok'); notify('ACCESS GRANTED — AIRLOCK OPEN'); aiSay('Access granted. Airlock open. Proceeding to the reactor.');
+  refreshNav(); refreshHUD(); autoAdvance('arrival', 'reactor', 2600);
+}
+
+/* ---------- 2 · CYBER CORE: node hacking + plasma surge lanes ---------- */
+const hackEl = $('#hack'), hackC = $('#hackCanvas'), hctx = hackC.getContext('2d');
+function startHack(el, force) {
+  if (Game.busy || Game.scene !== 'reactor' || Game.hack || (Game.demo && !force)) return;
+  const id = el.dataset.node; if (Game.nodes.has(id)) { Sfx.deny(); notify(`POWER NODE ${id} IS ALREADY ONLINE.`); return; }
+  const p = NODE_POS[id - 1]; if (!reach(p[0], p[2], 3.8, force, 'POWER NODE 0' + id)) return;
+  const d = D().hack;
+  Game.hack = { el, id, need: [2, 3, 3][id - 1], got: 0, miss: 0, ang: 0, speed: 2.4 * d[1], arc: d[0], center: Math.random() * 6.2832, dir: 1, auto: !!Game.demo, x: p[0], z: p[2], last: 0 };
+  hackEl.classList.add('on'); Sfx.click(); hackLabel();
+}
+function hackLabel() { const h = Game.hack; if (!h) return; $('#hackTitle').textContent = `HACKING POWER NODE 0${h.id}`; $('#hackSub').textContent = `SYNC ${h.got} / ${h.need} — PRESS SPACE WHEN THE NEEDLE IS IN THE GREEN ARC`; }
+function cancelHack(msg) { if (!Game.hack) return; Game.hack = null; hackEl.classList.remove('on'); if (msg) { notify(msg); Sfx.deny(); } }
+function hackPress() {
+  const h = Game.hack; if (!h) return;
+  if (Math.abs(angd(h.ang, h.center)) <= h.arc) {
+    h.got++; Sfx.pickup(); fx().burst(new THREE.Vector3(h.x, 1.7, h.z), 0x39ff98, 50);
+    if (h.got >= h.need) { const el = h.el; Game.hack = null; hackEl.classList.remove('on'); heroC().act(900); activateNode(el, true); return; }
+    h.center = (h.ang + 1.6 + Math.random() * 3) % 6.2832; h.arc *= .85; h.speed *= 1.15; h.dir = Math.random() < .5 ? -1 : 1; hackLabel();
+  } else {
+    h.miss++; Sfx.deny(); h.speed *= 1.08; hackEl.classList.add('bad'); setTimeout(() => hackEl.classList.remove('bad'), 260); hurt(10, 'FEEDBACK SHOCK');
+  }
+}
+$('#hackBtn').addEventListener('click', hackPress);
+function hackTick(dt) {
+  const h = Game.hack; if (!h) return;
+  if (Game.scene !== 'reactor') { cancelHack(); return; }
+  if (!near(h.x, h.z, 5.4)) { cancelHack('SIGNAL LOST — STAY NEAR THE NODE'); return; }
+  h.ang = (h.ang + h.speed * h.dir * dt / 1000 + 6.2832) % 6.2832;
+  if (h.auto && Math.abs(angd(h.ang, h.center)) < h.arc * .4 && performance.now() - h.last > 450) { h.last = performance.now(); hackPress(); }
+  if (!Game.hack) return;
+  const c = 100, r = 78; hctx.clearRect(0, 0, 200, 200);
+  hctx.lineWidth = 3; hctx.strokeStyle = '#2b4175'; hctx.beginPath(); hctx.arc(c, c, r, 0, 6.2832); hctx.stroke();
+  hctx.lineWidth = 14; hctx.strokeStyle = '#39ff98'; hctx.shadowColor = '#39ff98'; hctx.shadowBlur = 12; hctx.beginPath(); hctx.arc(c, c, r, h.center - h.arc, h.center + h.arc); hctx.stroke(); hctx.shadowBlur = 0;
+  hctx.lineWidth = 3; hctx.strokeStyle = '#fff'; hctx.beginPath(); hctx.moveTo(c, c); hctx.lineTo(c + Math.cos(h.ang) * (r + 8), c + Math.sin(h.ang) * (r + 8)); hctx.stroke();
+  hctx.fillStyle = '#57dcff'; hctx.beginPath(); hctx.arc(c, c, 6, 0, 6.2832); hctx.fill();
+}
+const lanes = [], laneGeo = new THREE.PlaneGeometry(1, 1); let nextSurge = 0;
+function spawnLane() {
+  const vertical = Math.random() < .5, bias = Math.random() < .6, c = vertical ? (bias ? H.x : rand(-8, 8)) : (bias ? H.z : rand(-12, 4));
+  const pos = clamp(c + rand(-.6, .6), vertical ? -8.5 : -13.5, vertical ? 8.5 : 5.5), W = 1.5;
+  const mat = new THREE.MeshBasicMaterial({ color: 0xff2a48, transparent: true, opacity: .2, depthWrite: false, side: THREE.DoubleSide }), m = new THREE.Mesh(laneGeo, mat);
+  m.rotation.x = -Math.PI / 2; if (vertical) { m.scale.set(W, 22, 1); m.position.set(pos, .06, -5); } else { m.scale.set(22, W, 1); m.position.set(0, .06, pos); }
+  sceneObj('reactor').add(m); lanes.push({ m, mat, vertical, pos, W, born: performance.now(), tele: D().surge[1], fired: 0 }); Sfx.tone(300, .12, 'square', .03);
+}
+function laneTick(now) {
+  for (let i = lanes.length - 1; i >= 0; i--) {
+    const L = lanes[i], age = now - L.born;
+    if (age < L.tele) L.mat.opacity = .16 + .14 * Math.sin(age / 55);
+    else {
+      if (!L.fired) { L.fired = now; L.mat.opacity = .92; L.mat.color.set(0xffd0d8); Sfx.noise(.25, .12, 2400, 300); }
+      const inLane = L.vertical ? Math.abs(H.x - L.pos) < L.W / 2 + .2 : Math.abs(H.z - L.pos) < L.W / 2 + .2;
+      if (inLane) hurt(22, 'PLASMA SURGE');
+      L.mat.opacity = Math.max(0, .92 - (now - L.fired) / 520);
+      if (now - L.fired > 520) { sceneObj('reactor').remove(L.m); L.mat.dispose(); lanes.splice(i, 1); }
+    }
+  }
+}
+function surgeTick(now) {
+  if (Game.scene !== 'reactor' || !Game.airlock || Game.nodes.size >= 3) return;
+  if (now > nextSurge) { spawnLane(); if (Game.nodes.size >= 2 && Math.random() < .5) spawnLane(); nextSurge = now + D().surge[0] * rand(.8, 1.2); }
+}
+
+/* ---------- 3 · COMMAND BRIDGE: sequence-memory floor pads ---------- */
+const PADX = [-2.7, -.9, .9, 2.7], PADZ = -4.0, PADC = ['#35c8ff', '#ff4fd8', '#39ff98', '#ff9d3d'];
+$('#scene-bridge').insertAdjacentHTML('beforeend', PADX.map((x, i) => `<a-entity class="simon-pad" data-i="${i}" position="${x} 0 ${PADZ}">
+  <a-cylinder id="pad${i}" radius=".72" height=".07" position="0 .035 0" color="${PADC[i]}" material="emissive: ${PADC[i]}; emissiveIntensity: .12; metalness: .5; roughness: .4"></a-cylinder>
+  <a-torus rotation="90 0 0" position="0 .08 0" radius=".72" radius-tubular=".025" color="${PADC[i]}" material="emissive: ${PADC[i]}; emissiveIntensity: 1"></a-torus>
+  <a-entity id="padGlow${i}" position="0 .3 0" glow="color: ${PADC[i]}; size: 2.4; opacity: 0"></a-entity>
+  <a-sphere class="hit" position="0 .3 0" radius=".85" material="opacity: 0; transparent: true; depthWrite: false"></a-sphere></a-entity>`).join('') +
+  `<a-text value="SECURITY SEQUENCE LOCK" rotation="-90 0 0" position="0 .03 -2.9" align="center" width="4.2" color="#9bd7ff"></a-text>`);
+document.querySelectorAll('.simon-pad').forEach(p => p.addEventListener('click', () => pressPad(+p.dataset.i)));
+const Simon = { active: false, seq: [], pos: 0, input: false, mistakes: 0, round: 0, token: 0, auto: false, resolve: null };
+function padOn(i, on) { $('#pad' + i).setAttribute('material', 'emissiveIntensity', on ? 2.4 : .12); $('#padGlow' + i).setAttribute('glow', 'opacity', on ? .95 : 0); }
+function flashPad(i, ms = 380) { padOn(i, true); Sfx.pad(i); setTimeout(() => padOn(i, false), ms); }
+function allPads(on) { for (let i = 0; i < 4; i++) padOn(i, on); }
+function pressPad(i, force) {
+  if (Game.scene !== 'bridge' || Game.busy || (Game.demo && !force)) return;
+  flashPad(i, 260); if (!Simon.input) return;
+  if (i === Simon.seq[Simon.pos]) { Simon.pos++; setSub(`REPEAT THE PATTERN (${Simon.pos}/${Simon.seq.length})`); if (Simon.pos >= Simon.seq.length) { Simon.input = false; Simon.resolve && Simon.resolve('ok'); } }
+  else { Simon.input = false; Simon.resolve && Simon.resolve('bad'); }
+}
+async function startSimon(force) {
+  if (Simon.active || Game.bridge || Game.busy || Game.scene !== 'bridge' || (Game.demo && !force)) return;
+  if (!reach(0, -5, 5.5, force, 'THE BRIDGE CONSOLE')) return;
+  Simon.active = true; Simon.auto = !!Game.demo; Simon.mistakes = 0; const tok = ++Simon.token, rounds = D().simon; Sfx.click();
+  const dead = () => tok !== Simon.token || Game.scene !== 'bridge';
+  try {
+    for (let r = 0; r < rounds.length; r++) {
+      Simon.round = r; Simon.seq = Array.from({ length: rounds[r] }, () => Math.floor(Math.random() * 4)); let ok = false;
+      while (!ok) {
+        Simon.input = false; setSub(`ROUND ${r + 1}/${rounds.length} — WATCH THE PATTERN`); await wait(900); if (dead()) throw 0;
+        for (const p of Simon.seq) { flashPad(p, 420); await wait(640); if (dead()) throw 0; }
+        Simon.pos = 0; Simon.input = true; setSub(`REPEAT THE PATTERN (0/${Simon.seq.length}) — STEP ON THE PADS`);
+        const pr = new Promise(res => Simon.resolve = res);
+        if (Simon.auto) (async () => { for (const p of Simon.seq) { await wait(520); if (dead() || !Simon.input) return; pressPad(p, true); } })();
+        const res = await pr; if (dead()) throw 0;
+        if (res === 'ok') { ok = true; Sfx.activate(r + 1); fx().ring(new THREE.Vector3(0, .05, PADZ), 0x39ff98); await wait(900); }
+        else {
+          Simon.mistakes++; Sfx.deny(); allPads(true); setTimeout(() => allPads(false), 350); hurt(8, 'SYSTEM FEEDBACK');
+          if (Simon.mistakes >= 3) { setSub('LOCKOUT — 3 MISTAKES. RESTARTING IN 5s'); notify('SECURITY LOCKOUT — SEQUENCE RESTARTING'); await wait(5000); if (dead()) throw 0; Simon.mistakes = 0; r = -1; break; }
+          setSub(`WRONG PAD — MISTAKE ${Simon.mistakes}/3`); await wait(1400); if (dead()) throw 0;
+        }
+      }
+    }
+    Simon.active = false; Simon.input = false; setSub(''); heroC().cheer(); authorizeLaunch(true);
+  } catch (e) { if (e !== 0) console.error(e); Simon.active = false; Simon.input = false; }
+}
+$('#bridge-console').addEventListener('click', () => startSimon());
+
+/* ---------- 4 · BIO-DOME: carry power cells past patrolling drones ---------- */
+const CELLP = [[-8, -12.6], [8.3, -12.6]], PODP = { 1: [-6.4, -6.8], 2: [6.6, -6.8] };
+const SD = [{ c: [0, -7.5], rx: 7.5, rz: 3.6, w: .55, ph: 0 }, { c: [0, -9.5], rx: 5, rz: 4.4, w: -.85, ph: 2 }], SDpos = [{ x: 0, z: -7 }, { x: 0, z: -9 }], sdCd = [0, 0];
+$('#scene-biodome').insertAdjacentHTML('beforeend', SD.map((d, i) => `<a-entity id="sdrone${i}" class="sdrone" position="0 1.7 -9">
+  <a-sphere radius=".26" color="#10182e" material="metalness: .9; roughness: .3"></a-sphere>
+  <a-sphere position="0 0 .2" radius=".09" material="color: #ff3b55; emissive: #ff3b55; emissiveIntensity: 2.2"></a-sphere>
+  <a-torus rotation="90 0 0" radius=".38" radius-tubular=".015" color="#ff3b55" material="emissive: #ff3b55; emissiveIntensity: 1.2"></a-torus>
+  <a-entity glow="color: #ff3b55; size: 1.6; opacity: .7"></a-entity>
+  <a-ring rotation="-90 0 0" position="0 -1.65 0" radius-inner="2.0" radius-outer="2.2" material="color: #ff3b55; opacity: .75; transparent: true; shader: flat; side: double"></a-ring>
+  <a-circle rotation="-90 0 0" position="0 -1.66 0" radius="2.1" material="color: #ff3b55; opacity: .13; transparent: true; shader: flat; side: double; depthWrite: false"></a-circle></a-entity>`).join(''));
+function spawnCells() {
+  document.querySelectorAll('.cell').forEach(e => e.remove());
+  CELLP.forEach(([x, z], i) => {
+    if (Game.carry === i || Game.delivered.has(i)) return;
+    $('#scene-biodome').insertAdjacentHTML('beforeend', `<a-entity class="cell" id="cell${i}" data-i="${i}" interactive position="${x} 1 ${z}">
+      <a-entity animation="property: position; from: 0 0 0; to: 0 .2 0; dur: 1400; dir: alternate; loop: true; easing: easeInOutSine">
+        <a-entity geometry="primitive: octahedron; radius: .3" material="color: #39ff98; emissive: #39ff98; emissiveIntensity: 1.5" spin="axis: 0 1 0; speed: 80"></a-entity>
+        <a-torus rotation="90 0 0" radius=".5" radius-tubular=".015" color="#39ff98" material="emissive: #39ff98; emissiveIntensity: 1.2"></a-torus>
+        <a-entity glow="color: #39ff98; size: 2.4; opacity: .8"></a-entity></a-entity>
+      <a-text value="POWER CELL" position="0 -.75 0" align="center" width="2" color="#8affc2" billboard></a-text>
+      <a-sphere class="hit" radius="1.1" material="opacity: 0; transparent: true; depthWrite: false"></a-sphere></a-entity>`);
+    $('#cell' + i).addEventListener('click', () => pickCell(+i));
+  });
+  refreshClickables();
+}
+function setCarry(i) { Game.carry = i; heroC().setCarry(i !== null); cam.setAttribute('wasd-controls', 'acceleration', i !== null ? 16 : 28); }
+function pickCell(i, force) {
+  if (Game.busy || Game.scene !== 'biodome' || Game.carry !== null || Game.delivered.has(i) || (Game.demo && !force)) { if (Game.carry !== null && Game.scene === 'biodome') { Sfx.deny(); notify('YOU ARE ALREADY CARRYING A POWER CELL.'); } return; }
+  if (!reach(CELLP[i][0], CELLP[i][1], 3, force, 'THE POWER CELL')) return;
+  setCarry(i); spawnCells(); Sfx.pickup(); heroC().act(); notify('POWER CELL SECURED — SLOWED BY THE LOAD. AVOID THE DRONE SWEEPS!'); logLine('Power cell acquired.', 'warn'); refreshHUD();
+}
+function dropCell() { if (Game.carry === null) return; setCarry(null); spawnCells(); }
+function insertCell(pod, force) {
+  if (Game.busy || Game.scene !== 'biodome' || (Game.demo && !force)) return;
+  const id = pod.dataset.pod; if (Game.pods.has(id)) { Sfx.deny(); notify(`CREW POD ${id} IS ALREADY AWAKE.`); return; }
+  if (!reach(PODP[id][0], PODP[id][1], 3.4, force, 'THE CRYO POD')) return;
+  if (Game.carry === null) { Sfx.deny(); caption('THE POD HAS NO POWER. FIND A POWER CELL IN THE DOME AND BRING IT HERE.', 4200); return; }
+  Game.delivered.add(Game.carry); setCarry(null); heroC().act(); wakePod(pod, true);
+}
+function droneTick(now) {
+  const on = Game.scene === 'biodome' && Game.pods.size < 2;
+  SD.forEach((d, i) => {
+    const e = $('#sdrone' + i), a = now / 1000 * d.w * D().drone + d.ph; SDpos[i].x = d.c[0] + Math.cos(a) * d.rx; SDpos[i].z = d.c[1] + Math.sin(a) * d.rz;
+    e.object3D.position.set(SDpos[i].x, 1.7, SDpos[i].z); e.object3D.visible = Game.pods.size < 2;
+    if (on && !Game.busy && Math.hypot(H.x - SDpos[i].x, H.z - SDpos[i].z) < 2.1 && now > sdCd[i]) { sdCd[i] = now + 1300; Sfx.alert(); hurt(20, 'SECURITY DRONE'); }
+  });
+}
+
+/* ---------- 5 · ESCAPE DOCK: charge the gate under meteor fire ---------- */
+$('#scene-dock').insertAdjacentHTML('beforeend', `<a-entity id="charge-zone" position="0 0 -7">
+  <a-ring rotation="-90 0 0" position="0 .05 0" radius-inner="2.5" radius-outer="2.7" material="color: #57dcff; shader: flat; opacity: .9; transparent: true; side: double"></a-ring>
+  <a-circle id="charge-fill" rotation="-90 0 0" position="0 .04 0" radius="2.5" material="color: #57dcff; shader: flat; opacity: .28; transparent: true; side: double; depthWrite: false"></a-circle>
+  <a-entity position="0 .3 0" glow="color: #57dcff; size: 6; opacity: .22"></a-entity>
+  <a-text id="charge-label" value="HOLD THE LINE · 0%" position="0 3.1 0" align="center" width="6" color="#cfe9ff" billboard></a-text></a-entity>`);
+const meteors = [], metBall = new THREE.SphereGeometry(.38, 10, 8), metRing = new THREE.RingGeometry(1.3, 1.7, 28); let nextMeteor = 0;
+function spawnMeteor() {
+  if (meteors.length >= 4) return; const nearZone = Math.random() < .65;
+  const x = clamp(nearZone ? rand(-3.8, 3.8) : H.x + rand(-1, 1), -9, 9), z = clamp(nearZone ? -7 + rand(-3.8, 3.8) : H.z + rand(-1, 1), -14, 5);
+  const ring = new THREE.Mesh(metRing, new THREE.MeshBasicMaterial({ color: 0xff3b55, transparent: true, opacity: .5, depthWrite: false, side: THREE.DoubleSide })); ring.rotation.x = -Math.PI / 2; ring.position.set(x, .07, z);
+  const ball = new THREE.Mesh(metBall, new THREE.MeshBasicMaterial({ color: 0xffa03a })); ball.position.set(x, 14, z);
+  const o = sceneObj('dock'); o.add(ring); o.add(ball); meteors.push({ ring, ball, x, z, born: performance.now(), tele: D().met[1] }); Sfx.tone(240, .5, 'sawtooth', .04, 500);
+}
+function meteorTick(now) {
+  for (let i = meteors.length - 1; i >= 0; i--) {
+    const m = meteors[i], k = (now - m.born) / m.tele; m.ball.position.y = 14 * (1 - Math.min(k, 1)) + .3; m.ring.material.opacity = .3 + .3 * Math.sin(now / 50); m.ring.scale.setScalar(1 + .06 * Math.sin(now / 90));
+    if (k >= 1) {
+      if (Math.hypot(H.x - m.x, H.z - m.z) < 1.7) hurt(18, 'METEOR IMPACT');
+      fx().burst(new THREE.Vector3(m.x, .3, m.z), 0xff7a3a, 90); fx().ring(new THREE.Vector3(m.x, .05, m.z), 0xff7a3a); Sfx.boom();
+      const o = sceneObj('dock'); o.remove(m.ring); o.remove(m.ball); m.ring.material.dispose(); m.ball.material.dispose(); meteors.splice(i, 1);
+    }
+  }
+}
+function clearHazards() {
+  lanes.forEach(L => { sceneObj('reactor').remove(L.m); L.mat.dispose(); }); lanes.length = 0;
+  meteors.forEach(m => { const o = sceneObj('dock'); o.remove(m.ring); o.remove(m.ball); }); meteors.length = 0;
+}
+function chargeTick(dt, now) {
+  if (Game.scene !== 'dock' || Game.charged || Game.launching || Game.done || Game.over) return;
+  if (now > nextMeteor) { spawnMeteor(); nextMeteor = now + D().met[0] * rand(.75, 1.25); }
+  if (Game.busy) return;
+  const inz = near(0, -7, 2.6), rate = dt / (D().charge * 1000) * Game.chargeMul;
+  Game.charge = clamp(Game.charge + (inz ? rate : -rate * .6), 0, 1);
+  const f = $('#charge-fill'); f.object3D.scale.setScalar(Math.max(.02, Game.charge)); f.setAttribute('material', 'color', inz ? '#39ff98' : '#57dcff');
+  const pct = Math.round(Game.charge * 100); $('#charge-label').setAttribute('value', `${inz ? 'CHARGING' : 'RETURN TO THE RING'} · ${pct}%`);
+  setSub(`GATE CHARGE ${pct}% — ${inz ? 'HOLD POSITION, DODGE THE METEORS' : 'STAND IN THE CYAN RING'}`);
+  if (Game.charge >= 1) {
+    Game.charged = true; clearHazards(); Sfx.stable(); heroC().cheer(); logLine('Gate fully charged.', 'ok'); notify('GATE CHARGED — LAUNCH!'); refreshHUD(); launch(true);
+  }
+}
+function gateClick(force) {
+  if (Game.scene !== 'dock' || Game.busy || (Game.demo && !force) || !dockOK()) return;
+  if (Game.charged) { launch(true); return; }
+  Sfx.deny(); caption('GATE UNPOWERED — STAND IN THE CYAN RING TO CHARGE IT. WATCH FOR METEORS!', 4400);
+}
+$('#escape-portal').addEventListener('click', () => gateClick());
+
+/* ---------- interaction (E key + prompt) ---------- */
+function interactables() {
+  const sc = Game.scene, o = [];
+  if (sc === 'arrival') { TERM.forEach(([x, z], i) => { if (!Game.scanned.has(i)) o.push({ x, z, r: 3.2, label: `SCAN TERMINAL ${i + 1}`, fn: () => scanTerminal(i) }); }); o.push({ x: -3, z: -5.5, r: 3.6, label: Game.airlock ? 'ENTER REACTOR' : 'NAV CONSOLE', fn: () => onConsoleClick() }, { x: 2.6, z: -6.2, r: 2.6, label: 'STATION AI', fn: () => $('#ai-orb').emit('click') }); }
+  if (sc === 'reactor') NODE_POS.forEach((p, i) => { if (!Game.nodes.has(String(i + 1))) o.push({ x: p[0], z: p[2], r: 3.8, label: `HACK POWER NODE 0${i + 1}`, fn: () => startHack($('#node' + (i + 1))) }); });
+  if (sc === 'bridge' && !Game.bridge) o.push({ x: 0, z: -6.4, r: 5.5, label: 'START SECURITY SEQUENCE', fn: () => startSimon() });
+  if (sc === 'biodome') { CELLP.forEach(([x, z], i) => { if (Game.carry === null && !Game.delivered.has(i)) o.push({ x, z, r: 3, label: 'TAKE POWER CELL', fn: () => pickCell(i) }); }); [1, 2].forEach(id => { if (!Game.pods.has(String(id))) o.push({ x: PODP[id][0], z: PODP[id][1], r: 3.4, label: 'INSERT POWER CELL', fn: () => insertCell($('#pod' + id)) }); }); }
+  if (sc === 'dock' && !Game.charged) o.push({ x: 0, z: -9.5, r: 5.5, label: 'CHECK ESCAPE GATE', fn: () => gateClick() });
+  const wp = new THREE.Vector3();
+  document.querySelectorAll('.data-core').forEach(c => { if (c.dataset.core !== sc) return; c.object3D.getWorldPosition(wp); o.push({ x: wp.x, z: wp.z, r: 2.4, label: 'COLLECT DATA CORE', fn: () => collectCore(c) }); });
+  return o;
+}
+function nearestInteract() { let best = null, bd = 1e9; interactables().forEach(i => { const d = Math.hypot(H.x - i.x, H.z - i.z); if (d <= i.r && d < bd) { bd = d; best = i; } }); return best; }
+function interact() { const i = nearestInteract(); if (i) i.fn(); }
+window.addEventListener('keydown', e => {
+  if (!Game.started) return;
+  if (kpEl.classList.contains('open')) {
+    const k = e.key; if (/^[0-9]$/.test(k)) kpPress(k); else if (k === 'Backspace') { kpBuf = kpBuf.slice(0, -1); kpUpdate(); } else if (k === 'Enter') kpPress('E'); else if (k === 'Escape') closeKeypad(); else return;
+    e.preventDefault(); e.stopImmediatePropagation(); return;
+  }
+  if (Game.hack && (e.key === ' ' || e.code === 'Space')) { e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) hackPress(); }
+}, true);
+window.addEventListener('keydown', e => {
+  if (!Game.started || /INPUT|SELECT|TEXTAREA/.test((e.target && e.target.tagName) || '')) return;
+  if (e.key === 'e' || e.key === 'E') interact();
+  else if (e.key === 'v' || e.key === 'V') { Settings.view = Settings.view === 'third' ? 'first' : 'third'; saveSettings(); syncV2UI(); notify(Settings.view === 'third' ? 'THIRD-PERSON VIEW' : 'FIRST-PERSON VIEW'); }
+});
+
+/* ---------- camera (third-person orbit) + master game loop ---------- */
+let viewK = 1, lastPrompt = 0, lastSubScene = '';
+function viewTick(dt) {
+  const want = Settings.view === 'third' && !sceneEl.is('vr-mode') ? 1 : 0; viewK += (want - viewK) * Math.min(1, dt / 160);
+  const c = sceneEl.camera; if (c) c.position.set(0, .55 * viewK, 3.6 * viewK);
+  const vis = viewK > .3 && Game.started; hero.object3D.visible = vis; nova.object3D.visible = vis;
+  const lc = cam.components['look-controls']; if (want && lc && lc.pitchObject) lc.pitchObject.rotation.x = clamp(lc.pitchObject.rotation.x, -1.05, .3);
+}
+function onSceneChange(name) {
+  clearHazards(); cancelHack(); const n = performance.now(); nextSurge = n + 3500; nextMeteor = n + 3500; Simon.token += (name !== 'bridge' ? 1 : 0); if (name !== 'bridge') { Simon.active = false; Simon.input = false; }
+}
+function gameTick(t, dt) {
+  dt = Math.min(dt, 100); const now = performance.now(); cam.object3D.getWorldPosition(_hw); H.x = _hw.x; H.z = _hw.z; viewTick(dt);
+  if (!Game.started) return;
+  if (Game.hp < 100 && !Game.downed && now - Game.lastHit > 4500 && !Game.over) Game.hp = Math.min(100, Game.hp + D().regen * dt / 1000);
+  const hp = Math.round(Game.hp); if (hpVal.textContent !== hp + '%') { hpVal.textContent = hp + '%'; hpBar.style.width = hp + '%'; hpBar.style.background = hp > 55 ? 'var(--gn)' : hp > 28 ? '#ffab2e' : 'var(--rd)'; }
+  if (Game.busy && !Game.downed) { if (!Game.over) return; }
+  if (Game.done || Game.over) return;
+  hackTick(dt); surgeTick(now); laneTick(now); droneTick(now); meteorTick(now); chargeTick(dt, now);
+  if (Game.scene === 'bridge' && !Game.demo && !Game.busy) {
+    let on = -1; PADX.forEach((x, i) => { if (Math.hypot(H.x - x, H.z - PADZ) < .75) on = i; });
+    if (on >= 0 && Game.onPad !== on) { Game.onPad = on; pressPad(on); } else if (on < 0 && !PADX.some(x => Math.hypot(H.x - x, H.z - PADZ) < .95)) Game.onPad = -1;
+  }
+  if (now - lastPrompt > 100) {
+    lastPrompt = now; const i = (!Game.busy && !Game.demo && !Game.hack && !kpEl.classList.contains('open')) ? nearestInteract() : null;
+    promptEl.classList.toggle('on', !!i); if (i) promptEl.textContent = `[E] ${i.label}`;
+    if (Game.scene === 'arrival' || Game.scene === 'reactor' || Game.scene === 'biodome' || (Game.scene === 'bridge' && !Simon.active) ) refreshSub();
+  }
+}
+function refreshSub() {
+  const sc = Game.scene;
+  if (sc === 'arrival' && !Game.airlock) { const hide = Settings.difficulty === 'hard'; setSub('CODE: ' + [0, 1, 2, 3].map(i => Game.scanned.has(i) ? (hide ? '•' : Game.code[i]) : '?').join(' · ') + (hide ? '  (MEMORIZE IT!)' : '')); }
+  else if (sc === 'reactor' && !Game.hack && Game.nodes.size < 3) setSub('DODGE THE RED SURGE LANES WHILE YOU HACK');
+  else if (sc === 'biodome' && Game.pods.size < 2) setSub(Game.carry !== null ? 'CARRYING A CELL — STAY OUT OF THE RED SWEEP RINGS' : 'FIND A POWER CELL — DRONES PATROL THE DOME');
+  else if (sc === 'bridge' && !Simon.active && !Game.bridge) setSub('USE THE CONSOLE TO START THE SECURITY SEQUENCE');
+  else if (sc === 'bridge' && Game.bridge) setSub('');
+}
+
+/* ---------- state reset ---------- */
+function resetMissionV2() {
+  Game.airlock = false; genCode(); Game.scanned.clear(); Game.charge = 0; Game.charged = false; Game.hp = 100; Game.deaths = 0; Game.delivered.clear(); Game.penalty = 0; Game.chargeMul = 1; Game.downed = false;
+  cancelHack(); Simon.token++; Simon.active = false; Simon.input = false; allPads(false); clearHazards(); closeKeypad(); setCarry(null); spawnCells();
+  TERM.forEach((_, i) => { const st = $('#termState' + i); st.setAttribute('value', 'PRESS E TO SCAN'); st.setAttribute('color', '#ffb02e'); });
+  const l = $('#lock-state'); l.setAttribute('value', 'AIRLOCK SEALED'); l.setAttribute('color', '#ff8a9a');
+  $('#charge-label').setAttribute('value', 'HOLD THE LINE · 0%'); $('#charge-fill').object3D.scale.setScalar(.02); setSub(''); hurtEl.style.opacity = 0;
+  nextSurge = nextMeteor = performance.now() + 3500; refreshNav(); refreshHUD();
+}
+
+/* ---------- v2 UI wiring: callsign, suit colour, difficulty, view ---------- */
+function syncV2UI() {
+  $('#bootName').value = Settings.name || 'KIAN'; $('#bootDiff').value = Settings.difficulty; $('#optDiff').value = Settings.difficulty; $('#optView').value = Settings.view;
+  document.querySelectorAll('#bootSuit button').forEach(b => b.classList.toggle('on', b.dataset.c === Settings.suit));
+}
+document.querySelectorAll('#bootSuit button').forEach(b => { b.style.background = b.dataset.c; b.addEventListener('click', () => { Settings.suit = b.dataset.c; saveSettings(); syncV2UI(); heroC().setColor(Settings.suit); }); });
+$('#bootName').addEventListener('input', e => { Settings.name = e.target.value.toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 10) || 'KAI'; heroC().setName(Settings.name); saveSettings(); });
+$('#bootDiff').addEventListener('change', e => { Settings.difficulty = e.target.value; saveSettings(); syncV2UI(); });
+$('#optDiff').addEventListener('change', e => { Settings.difficulty = e.target.value; saveSettings(); syncV2UI(); notify('DIFFICULTY: ' + Settings.difficulty.toUpperCase() + ' — RESTART TO APPLY FULLY'); });
+$('#optView').addEventListener('change', e => { Settings.view = e.target.value; saveSettings(); });
+
 /* ---------- apply saved settings at startup ---------- */
-loadSettings(); syncSettingsUI(); spawnCores(); updateCoreHUD();
+loadSettings(); syncSettingsUI(); spawnCores(); updateCoreHUD(); spawnCells();
 
 /* ---------- boot ---------- */
 const fill = p => $('#loadfill').style.width = p + '%', startBtn = $('#startBtn');
@@ -1706,9 +2240,9 @@ Promise.race([Promise.all([sceneReady, loadShipModel()]), wait(7000)]).then(asyn
 startBtn.addEventListener('click', async () => {
   Sfx.init(); Sfx.applyVol(); Sfx.tension(.12); Sfx.click(); $('#boot').classList.add('hide'); Settings.challenge = $('#bootChallenge').checked; saveSettings(); syncSettingsUI();
   Game.started = true; Game.t0 = performance.now(); dolly('0 0 6', '0 0 1', 2600); Sfx.whoosh();
-  logLine('Docking complete. Welcome, Commander.'); await wait(600);
+  logLine('Docking complete. Welcome, ' + (Settings.name || 'Commander') + '.'); await wait(600);
   logLine('Reactor core reporting critical instability.', 'warn'); await wait(500);
-  logLine('Objective: reach the reactor control room.'); aiSay('Welcome aboard, Commander. The reactor is failing. Reach the control room and restore power.', 6000);
+  logLine('Objective: crack the airlock code.'); aiSay('Welcome aboard, ' + (Settings.name || 'Commander') + '. The reactor is failing and the airlock is sealed. Find the four access digits on the terminals.', 6000);
   await wait(1600); Game.busy = false; refreshClickables();
 });
 </script>
